@@ -48,20 +48,20 @@ const ChatMessage: React.FC<{ message: Message }> = ({ message }) => {
 
 interface ActionModalProps {
     characters: Character[];
-    action: { type: 'skill', skill: string } 
-          | { type: 'sanity', roll: string, reason: string }
-          | { type: 'stat', stat: keyof Character['stats'], multiplier?: number, reason: string };
+    action: { type: 'skill', skill: string }
+    | { type: 'sanity', roll: string, reason: string }
+    | { type: 'stat', stat: keyof Character['stats'], multiplier?: number, reason: string };
     onClose: () => void;
     onSelect: (characterId: string) => void;
 }
 
 const ActionModal: React.FC<ActionModalProps> = ({ characters, action, onClose, onSelect }) => {
-    const title = action.type === 'skill' 
-        ? `技能判定: 〈${action.skill}〉` 
+    const title = action.type === 'skill'
+        ? `技能判定: 〈${action.skill}〉`
         : action.type === 'stat'
-        ? `能力値判定: ${action.reason}`
-        : `正気度チェック: ${action.reason}`;
-    
+            ? `能力値判定: ${action.reason}`
+            : `正気度チェック: ${action.reason}`;
+
     const subtitle = action.type === 'skill' || action.type === 'stat'
         ? '誰が判定を行いますか？'
         : '誰がチェックを受けますか？';
@@ -71,12 +71,12 @@ const ActionModal: React.FC<ActionModalProps> = ({ characters, action, onClose, 
             <div className="bg-gray-800 rounded-lg shadow-xl p-6 border border-purple-500/30 w-full max-w-md">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold font-crimson text-purple-300">{title}</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={24}/></button>
+                    <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={24} /></button>
                 </div>
                 <p className="text-gray-300 mb-6">{subtitle}</p>
                 <div className="space-y-3">
                     {characters.map(char => (
-                        <button key={char.id} onClick={() => onSelect(char.id)} 
+                        <button key={char.id} onClick={() => onSelect(char.id)}
                             className="w-full text-left px-4 py-3 bg-gray-700 hover:bg-gray-600 text-gray-200 font-semibold rounded-lg transition-colors transform hover:scale-105">
                             <div className="flex justify-between items-center">
                                 <span>{char.name}</span>
@@ -136,7 +136,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
 
     const processKeeperResponse = useCallback((response: KeeperResponse) => {
         setMessages(prev => [...prev, { id: `keeper-${Date.now()}-${prev.length}`, content: response.description, sender: MessageSender.Keeper }]);
-        
+
         if (response.gameClear) {
             onGameClear(response.rewards);
             setIsLoading(false);
@@ -156,19 +156,19 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
         const startGame = async () => {
             setIsLoading(true);
             const names = initialCharacters.map(c => `**${c.name}**`).join('、');
-            
+
             const titleMessage = `### シナリオ: ${initialScenario.title}\n*推定プレイ時間: ${initialScenario.estimatedPlayTime}*`;
-            setMessages(prev => [...prev, 
-                { id: `title-${Date.now()}`, content: titleMessage, sender: MessageSender.System },
-                { id: `welcome-${Date.now()}`, content: `ようこそ、探索者 ${names}。\n物語が始まります...`, sender: MessageSender.System }
+            setMessages(prev => [...prev,
+            { id: `title-${Date.now()}`, content: titleMessage, sender: MessageSender.System },
+            { id: `welcome-${Date.now()}`, content: `ようこそ、探索者 ${names}。\n物語が始まります...`, sender: MessageSender.System }
             ]);
-            
+
             const chat = createChatSession();
             setChatSession(chat);
 
             const response = await startNewGame(chat, initialCharacters, initialScenario);
             setMessages(prev => [...prev, { id: `keeper-start-${Date.now()}`, content: response.description, sender: MessageSender.Keeper }]);
-            
+
             if (response.gameClear) {
                 onGameClear(response.rewards);
                 setIsLoading(false);
@@ -183,7 +183,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
                 setIsLoading(false);
             }
         };
-        
+
         if (!chatSession) {
             startGame();
         }
@@ -191,7 +191,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
 
     const handlePlayerAction = useCallback(async (actionText: string, rollResult?: { characterName: string; skill: string; value: number; result: string; dice: number }) => {
         if (!actionText.trim() || !chatSession) return;
-        
+
         setLastFailedSkillCheck(null);
         setMessages(prev => [...prev, { id: `player-${Date.now()}-${prev.length}`, content: actionText, sender: MessageSender.Player }]);
         setIsLoading(true);
@@ -201,10 +201,10 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
         const response = await sendPlayerAction(chatSession, actionText, characters, rollResult);
         processKeeperResponse(response);
     }, [characters, processKeeperResponse, chatSession]);
-    
+
     const handleSystemAction = useCallback(async (actionText: string, systemMessage: string) => {
         if (!chatSession) return;
-        
+
         setLastFailedSkillCheck(null);
         setMessages(prev => [...prev, { id: `system-${Date.now()}-${prev.length}`, content: systemMessage, sender: MessageSender.System }]);
         setIsLoading(true);
@@ -221,7 +221,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
             handlePlayerAction(input);
         }
     };
-    
+
     const handleSuggestedActionClick = (action: string) => {
         setLastFailedSkillCheck(null);
         handlePlayerAction(action);
@@ -234,13 +234,13 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
         const character = characters.find(c => c.id === characterId)!;
         const cleanedSkill = skill.replace(/[〈〉]/g, '');
         const skillValue = character.skills[cleanedSkill] ?? 0;
-        
+
         setDiceRollRequest({
             notation: '1d100',
             reason: `技能判定: 〈${cleanedSkill}〉`,
             onComplete: (diceRoll) => {
                 setDiceRollRequest(null);
-                
+
                 let result: string;
                 if (diceRoll <= 1) result = "クリティカル (01)";
                 else if (diceRoll <= skillValue / 5) result = "イクストリーム成功";
@@ -249,7 +249,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
                 else if (diceRoll >= 100) result = "ファンブル (00)";
                 else if (diceRoll >= 96 && skillValue < 50) result = "ファンブル";
                 else result = "失敗";
-                
+
                 const isSuccess = result !== '失敗' && result !== 'ファンブル' && result !== 'ファンブル (00)';
 
                 const message = `🎲 **技能判定: 〈${cleanedSkill}〉 (${character.name})**\n- **結果:** ${diceRoll} (目標: ${skillValue})\n- **判定:** ${result}`;
@@ -289,7 +289,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
             reason: `能力値判定: ${reason}`,
             onComplete: (diceRoll) => {
                 setDiceRollRequest(null);
-                
+
                 let result: string;
                 if (diceRoll <= 1) result = "クリティカル (01)";
                 else if (diceRoll <= targetValue / 5) result = "イクストリーム成功";
@@ -298,7 +298,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
                 else if (diceRoll >= 100) result = "ファンブル (00)";
                 else if (diceRoll >= 96 && targetValue < 50) result = "ファンブル";
                 else result = "失敗";
-                
+
                 const isSuccess = result !== '失敗' && result !== 'ファンブル' && result !== 'ファンブル (00)';
 
                 const message = `🎲 **能力値判定: ${reason} (${character.name})**\n- **結果:** ${diceRoll} (目標: ${targetValue} - ${checkName})\n- **判定:** ${result}`;
@@ -330,7 +330,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
         const character = characters.find(c => c.id === characterId)!;
 
         setLastFailedSkillCheck(null);
-        
+
         const actionTextForAI = `${character.name}が〈${skill}〉の技能判定に失敗し、プッシュは行わないことにした。`;
 
         const sendFailureToAI = async () => {
@@ -353,12 +353,12 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
         if (!lastFailedSkillCheck || !chatSession) return;
         const { characterId, skill, value } = lastFailedSkillCheck;
         const character = characters.find(c => c.id === characterId)!;
-        
+
         const systemMessage = `**プッシュ・ロール！**\n${character.name}は失敗にも屈せず、再び〈${skill}〉に挑戦する...！しかし、これに失敗すれば、ただでは済まないだろう。`;
         setMessages(prev => [...prev, { id: `push-start-${Date.now()}-${prev.length}`, content: systemMessage, sender: MessageSender.System }]);
         setLastFailedSkillCheck(null);
         setIsLoading(true);
-        
+
         setDiceRollRequest({
             notation: '1d100',
             reason: `プッシュ・ロール: 〈${skill}〉`,
@@ -376,7 +376,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
 
                 const pushMessage = `🎲 **プッシュ結果: 〈${skill}〉 (${character.name})**\n- **結果:** ${diceRoll} (目標: ${value})\n- **判定:** ${result}`;
                 setMessages(prev => [...prev, { id: `push-result-${Date.now()}-${prev.length}`, content: pushMessage, sender: MessageSender.System }]);
-                
+
                 const sendPushedResult = async () => {
                     const response = await sendPlayerAction(
                         chatSession,
@@ -395,7 +395,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
     const handleSanityCheck = (roll: string, reason: string, characterId: string) => {
         setLastFailedSkillCheck(null);
         const character = characters.find(c => c.id === characterId)!;
-        
+
         setDiceRollRequest({
             notation: roll,
             reason: `SANチェック: ${reason}`,
@@ -403,14 +403,14 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
                 setDiceRollRequest(null);
                 const newSan = Math.max(0, character.san.current - sanLoss);
                 const message = `🧠 **正気度チェック: ${reason} (${character.name})**\n- **SAN損失:** ${sanLoss} (${character.san.current} → ${newSan})`;
-                
-                updateCharacterState(characterId, c => ({ ...c, san: { ...c.san, current: newSan }}));
-                
+
+                updateCharacterState(characterId, c => ({ ...c, san: { ...c.san, current: newSan } }));
+
                 handleSystemAction(`${character.name}が正気度チェックに失敗し、SANを${sanLoss}失った。`, message);
             }
         });
     };
-    
+
     const handleGenericDiceRoll = (roll: string, reason: string) => {
         setLastFailedSkillCheck(null);
         setDiceRollRequest({
@@ -427,8 +427,8 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
     const hasPendingChoice = !!(pendingAction?.skillCheck || pendingAction?.statCheck || pendingAction?.sanityCheck || pendingAction?.diceRollRequired);
 
     return (
-        <div className="h-screen w-screen flex bg-gray-900 text-gray-200 font-sans bg-cover bg-center" style={{backgroundImage: "url('https://images.unsplash.com/photo-1531685250784-7569952593d2?q=80&w=1920&auto=format&fit=crop')"}}>
-             {diceRollRequest && (
+        <div className="h-screen w-screen flex bg-gray-900 text-gray-200 font-sans bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1531685250784-7569952593d2?q=80&w=1920&auto=format&fit=crop')" }}>
+            {diceRollRequest && (
                 <DiceRollModal
                     isOpen={true}
                     notation={diceRollRequest.notation}
@@ -437,7 +437,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
                 />
             )}
             {modalAction && (
-                <ActionModal 
+                <ActionModal
                     characters={characters}
                     action={modalAction}
                     onClose={() => setModalAction(null)}
@@ -454,7 +454,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
                 />
             )}
             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
-            
+
             {isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-20 md:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
 
             <aside className={`fixed md:static inset-y-0 left-0 w-4/5 sm:w-2/3 md:w-1/3 xl:w-1/4 h-full bg-gray-900/90 backdrop-blur-md overflow-y-auto border-r border-purple-500/20 z-30 transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
@@ -462,22 +462,22 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
             </aside>
 
             <main className="w-full h-full flex flex-col z-10">
-                 <header className="md:hidden p-2 border-b border-purple-500/20 flex items-center bg-gray-900/70 backdrop-blur-sm sticky top-0">
-                     <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-gray-300 hover:text-white" aria-label="探索者ステータスを開く">
+                <header className="md:hidden p-2 border-b border-purple-500/20 flex items-center bg-gray-900/70 backdrop-blur-sm sticky top-0">
+                    <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-gray-300 hover:text-white" aria-label="探索者ステータスを開く">
                         <Users size={24} />
                     </button>
                     <h1 className="text-center font-crimson text-lg text-purple-200 flex-grow mr-10">Auto TRPG</h1>
                 </header>
                 <div className="flex-1 overflow-y-auto p-2 sm:p-6">
                     <div className="max-w-4xl mx-auto">
-                      {messages.map((msg) => <ChatMessage key={msg.id} message={msg} />)}
-                      {isLoading && (
-                        <div className="flex justify-center items-center gap-3 text-gray-400 py-4">
-                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-400"></div>
-                            <span className="font-semibold text-lg">思考中...</span>
-                        </div>
-                      )}
-                      <div ref={chatEndRef}></div>
+                        {messages.map((msg) => <ChatMessage key={msg.id} message={msg} />)}
+                        {isLoading && (
+                            <div className="flex justify-center items-center gap-3 text-gray-400 py-4">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-400"></div>
+                                <span className="font-semibold text-lg">思考中...</span>
+                            </div>
+                        )}
+                        <div ref={chatEndRef}></div>
                     </div>
                 </div>
 
@@ -506,7 +506,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
                                 </div>
                             </div>
                         )}
-                        
+
                         {pendingAction && !isLoading && (
                             <div className="flex flex-col sm:flex-row flex-wrap justify-center gap-3 mb-4">
                                 {pendingAction.skillCheck && (

@@ -6,37 +6,9 @@ import { CharacterCreationScreen } from './components/CharacterCreationScreen';
 import { GamePlayScreen } from './components/GamePlayScreen';
 import { GameClearScreen } from './components/GameClearScreen';
 import { GameOverScreen } from './components/GameOverScreen';
-import { AlertTriangle, X, Volume2, VolumeX, Loader2 } from 'lucide-react';
+import { Volume2, VolumeX, Loader2 } from 'lucide-react';
 import { generateScenarioOutline } from './services/keeperAI';
 import { ScenarioOptionsModal } from './components/ScenarioOptionsModal';
-
-const SafariWarning: React.FC = () => {
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    // Check if the browser is Safari (but not Chrome or other WebKit browsers)
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    if (isSafari) {
-      setIsVisible(true);
-    }
-  }, []);
-
-  if (!isVisible) {
-    return null;
-  }
-
-  return (
-    <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-yellow-400 border border-yellow-600 text-black p-3 text-center z-[100] flex items-center justify-center shadow-lg rounded-lg max-w-2xl w-[90%]">
-      <AlertTriangle className="mr-3 flex-shrink-0" />
-      <p className="font-semibold text-sm sm:text-base text-left">
-        現在、このアプリケーションはSafariブラウザに完全には対応していません。最適な体験のために、Google Chromeの使用を推奨します。
-      </p>
-      <button onClick={() => setIsVisible(false)} className="ml-3 p-1 rounded-full hover:bg-yellow-500/50 flex-shrink-0" aria-label="警告を閉じる">
-        <X size={20} />
-      </button>
-    </div>
-  );
-};
 
 const BGMPlayer: React.FC = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -65,7 +37,7 @@ const BGMPlayer: React.FC = () => {
     }
 
     const audio = audioRef.current;
-    
+
     // The state might not be perfectly in sync if played/paused from outside our button,
     // so we check the 'paused' property of the audio element itself.
     if (audio.paused) {
@@ -97,11 +69,11 @@ const BGMPlayer: React.FC = () => {
 };
 
 const LoadingScreen: React.FC<{ text: string }> = ({ text }) => (
-    <div className="fixed inset-0 bg-gray-900 flex flex-col items-center justify-center text-white z-[200]">
-        <Loader2 className="w-16 h-16 animate-spin text-purple-400 mb-6" />
-        <h1 className="text-3xl font-crimson mb-2">{text}</h1>
-        <p className="text-gray-400">物語の準備をしています...</p>
-    </div>
+  <div className="fixed inset-0 bg-gray-900 flex flex-col items-center justify-center text-white z-[200]">
+    <Loader2 className="w-16 h-16 animate-spin text-purple-400 mb-6" />
+    <h1 className="text-3xl font-crimson mb-2">{text}</h1>
+    <p className="text-gray-400">物語の準備をしています...</p>
+  </div>
 );
 
 
@@ -120,16 +92,16 @@ export default function App() {
   const handleGenerateScenario = useCallback(async (options: { playTime?: string; difficulty?: string; synopsis?: string; }) => {
     setScenarioOptionsModalOpen(false);
     setGameState(GameState.GeneratingScenario);
-    
+
     try {
-        const generatedScenario = await generateScenarioOutline(characters, options);
-        setScenario(generatedScenario);
-        setGameState(GameState.Playing);
+      const generatedScenario = await generateScenarioOutline(characters, options);
+      setScenario(generatedScenario);
+      setGameState(GameState.Playing);
     } catch (error) {
-        console.error("Failed to generate scenario:", error);
-        // Handle error, maybe show an error message and return to character creation
-        setGameState(GameState.CharacterCreation);
-        alert("シナリオの生成に失敗しました。もう一度お試しください。");
+      console.error("Failed to generate scenario:", error);
+      // Handle error, maybe show an error message and return to character creation
+      setGameState(GameState.CharacterCreation);
+      alert("シナリオの生成に失敗しました。もう一度お試しください。");
     }
   }, [characters]);
 
@@ -169,18 +141,18 @@ export default function App() {
         );
       case GameState.GameClear:
         return scenario ? (
-            <GameClearScreen 
-                scenarioTitle={scenario.title}
-                rewards={rewards}
-                onRestart={handleRestart}
-            />
+          <GameClearScreen
+            scenarioTitle={scenario.title}
+            rewards={rewards}
+            onRestart={handleRestart}
+          />
         ) : <CharacterCreationScreen onCharacterCreate={handleCharacterCreationSubmit} />; // Fallback
       case GameState.GameOver:
-         return scenario ? (
-            <GameOverScreen 
-                scenarioTitle={scenario.title}
-                onRestart={handleRestart}
-            />
+        return scenario ? (
+          <GameOverScreen
+            scenarioTitle={scenario.title}
+            onRestart={handleRestart}
+          />
         ) : <CharacterCreationScreen onCharacterCreate={handleCharacterCreationSubmit} />; // Fallback
       default:
         return <div>不明なゲーム状態です</div>;
@@ -189,10 +161,9 @@ export default function App() {
 
   return (
     <div className="App">
-      <SafariWarning />
       <BGMPlayer />
       {renderContent()}
-      <ScenarioOptionsModal 
+      <ScenarioOptionsModal
         isOpen={isScenarioOptionsModalOpen}
         onClose={() => setScenarioOptionsModalOpen(false)}
         onGenerate={handleGenerateScenario}
