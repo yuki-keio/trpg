@@ -29,7 +29,7 @@ const modelConfig = {
             targetAll: { type: Type.BOOLEAN, nullable: true, description: "全探索者がチェックを受ける場合はtrue、個別の場合はfalse（デフォルト）" }
           }
         },
-        skillCheck: { type: Type.STRING, nullable: true, description: "判定が推奨される技能名 (例: '〈目星〉')" },
+        skillCheck: { type: Type.STRING, nullable: true, description: "判定が推奨される技能名。必ず単一の技能名のみ指定すること (例: '目星', '隠れる', '聞き耳'など)。複数の技能や複数の探索者の技能を同時に指定してはいけません。" },
         statCheck: {
           type: Type.OBJECT,
           nullable: true,
@@ -236,7 +236,7 @@ export const startNewGame = async (chat: Chat, characters: Character[], scenario
 
     これが今回の探索者（プレイヤーキャラクター）たちの情報です。
     この探索者たちを中心として、上記のシナリオに基づいたTRPGの物語を始めてください。
-    最初の導入部分を描写し、探索者たちが最初に行うべき行動を問いかけ、行動の選択肢を提示してください。
+    最初の導入部分を具体的に描写し、探索者たちが最初に行うべき行動を問いかけ、行動の選択肢を提示してください。
 
     ### 探索者情報
     ${characterInfos}

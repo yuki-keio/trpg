@@ -60,6 +60,14 @@ const CharacterDetails: React.FC<{ character: Character }> = ({ character }) => 
                             )}
                         </div>
                         <p className="text-xs text-red-200">{character.madness.description}</p>
+                        {(character.madness.description.includes('全ての行動に-20のペナルティ') ||
+                            character.madness.description.includes('技能判定-30')) && (
+                                <div className="mt-2 text-xs text-orange-300 font-bold">
+                                    ⚠️ 判定ペナルティ:
+                                    {character.madness.description.includes('全ての行動に-20のペナルティ') && ' 全判定-20'}
+                                    {character.madness.description.includes('技能判定-30') && ' 技能判定-30'}
+                                </div>
+                            )}
                     </div>
                 )}
             </div>

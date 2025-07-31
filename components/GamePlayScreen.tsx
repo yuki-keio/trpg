@@ -4,7 +4,6 @@ import type { Character, KeeperResponse, Message, Reward, ScenarioOutline } from
 import { MessageSender } from '../types';
 import { createChatSession, startNewGame, sendPlayerAction } from '../services/keeperAI';
 import type { Chat } from '@google/genai';
-import { parseAndRoll, rollDie } from '../utils/dice';
 import { CharacterStatus } from './CharacterStatus';
 import { Send, Dices, BrainCircuit, HelpCircle, Bot, User, X, Users, AlertTriangle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -33,6 +32,23 @@ const INDEFINITE_MADNESS_SYMPTOMS = [
     "幻聴・幻覚：存在しない声や映像を知覚する"
 ];
 
+// 技能名をクリーンアップする関数
+const cleanSkillName = (skill: string): string => {
+    // 複数の技能や探索者名が含まれている場合の処理
+    let cleaned = skill;
+
+    // 複数の技能が「、」や「,」で区切られている場合、最初の技能のみを取得
+    cleaned = cleaned.split(/[、,]/)[0];
+
+    // 〈〉を除去
+    cleaned = cleaned.replace(/[〈〉]/g, '');
+
+    // 前後の空白を除去
+    cleaned = cleaned.trim();
+
+    return cleaned;
+};
+
 // 狂気判定と症状決定
 const checkForMadness = (character: Character, sanLoss: number): { type: 'temporary' | 'indefinite' | null; description: string; duration?: number } => {
     // 不定狂気の閾値を計算（SAN最大値の1/5）
@@ -50,6 +66,27 @@ const checkForMadness = (character: Character, sanLoss: number): { type: 'tempor
     }
 
     return { type: null, description: '' };
+};
+
+// 狂気によるペナルティを計算する関数
+const getMadnessPenalty = (character: Character, checkType: 'skill' | 'stat'): number => {
+    if (!character.madness || !character.madness.type) {
+        return 0;
+    }
+
+    const description = character.madness.description;
+
+    // 一時的狂気の-20ペナルティ（全ての行動に適用）
+    if (character.madness.type === 'temporary' && description.includes('全ての行動に-20のペナルティ')) {
+        return -20;
+    }
+
+    // 不定の狂気の-30ペナルティ（技能判定のみに適用）
+    if (character.madness.type === 'indefinite' && description.includes('技能判定-30') && checkType === 'skill') {
+        return -30;
+    }
+
+    return 0;
 };
 
 const MessageIcon: React.FC<{ sender: MessageSender }> = ({ sender }) => {
@@ -377,12 +414,16 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
         decrementMadnessDuration();
 
         const character = characters.find(c => c.id === characterId)!;
-        const cleanedSkill = skill.replace(/[〈〉]/g, '');
-        const skillValue = character.skills[cleanedSkill] ?? 0;
+        const cleanedSkill = cleanSkillName(skill);
+        const baseSkillValue = character.skills[cleanedSkill] ?? 0;
+
+        // 狂気によるペナルティを適用
+        const madnessPenalty = getMadnessPenalty(character, 'skill');
+        const skillValue = Math.max(0, baseSkillValue + madnessPenalty);
 
         setDiceRollRequest({
             notation: '1d100',
-            reason: `技能判定: 〈${cleanedSkill}〉`,
+            reason: `技能判定: 〈${cleanedSkill}〉${madnessPenalty < 0 ? ` (狂気ペナルティ: ${madnessPenalty})` : ''}`,
             onComplete: (diceRoll) => {
                 setDiceRollRequest(null);
 
@@ -397,7 +438,8 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
 
                 const isSuccess = result !== '失敗' && result !== 'ファンブル' && result !== 'ファンブル (00)';
 
-                const message = `🎲 **技能判定: 〈${cleanedSkill}〉 (${character.name})**\n- **結果:** ${diceRoll} (目標: ${skillValue})\n- **判定:** ${result}`;
+                const penaltyText = madnessPenalty < 0 ? ` (基本値: ${baseSkillValue}, 狂気ペナルティ: ${madnessPenalty})` : '';
+                const message = `🎲 **技能判定: 〈${cleanedSkill}〉 (${character.name})**\n- **結果:** ${diceRoll} (目標: ${skillValue}${penaltyText})\n- **判定:** ${result}`;
                 setMessages(prev => [...prev, { id: `skill-check-${Date.now()}-${prev.length}`, content: message, sender: MessageSender.System }]);
 
                 if (isSuccess) {
@@ -429,12 +471,16 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
 
         const character = characters.find(c => c.id === characterId)!;;
         const statValue = character.stats[stat] ?? 0;
-        const targetValue = statValue * multiplier;
+        const baseTargetValue = statValue * multiplier;
+
+        // 狂気によるペナルティを適用
+        const madnessPenalty = getMadnessPenalty(character, 'stat');
+        const targetValue = Math.max(0, baseTargetValue + madnessPenalty);
         const checkName = `${stat}×${multiplier}`;
 
         setDiceRollRequest({
             notation: '1d100',
-            reason: `能力値判定: ${reason}`,
+            reason: `能力値判定: ${reason}${madnessPenalty < 0 ? ` (狂気ペナルティ: ${madnessPenalty})` : ''}`,
             onComplete: (diceRoll) => {
                 setDiceRollRequest(null);
 
@@ -449,7 +495,8 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
 
                 const isSuccess = result !== '失敗' && result !== 'ファンブル' && result !== 'ファンブル (00)';
 
-                const message = `🎲 **能力値判定: ${reason} (${character.name})**\n- **結果:** ${diceRoll} (目標: ${targetValue} - ${checkName})\n- **判定:** ${result}`;
+                const penaltyText = madnessPenalty < 0 ? ` (基本値: ${baseTargetValue}, 狂気ペナルティ: ${madnessPenalty})` : '';
+                const message = `🎲 **能力値判定: ${reason} (${character.name})**\n- **結果:** ${diceRoll} (目標: ${targetValue} - ${checkName}${penaltyText})\n- **判定:** ${result}`;
                 setMessages(prev => [...prev, { id: `stat-check-${Date.now()}-${prev.length}`, content: message, sender: MessageSender.System }]);
 
                 if (isSuccess) {
@@ -634,9 +681,9 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
 
             // SAN値が0以下になったキャラクターがいる場合は即座にゲームオーバー
             if (gameOverCharacter) {
-                setMessages(prev => [...prev, 
-                    { id: `sancheck-all-result-${Date.now()}`, content: message, sender: MessageSender.System },
-                    { id: `gameover-san-all-${Date.now()}`, content: `### ゲームオーバー\n\n${gameOverCharacter!.name}の正気度が完全に失われた。もはや元の人格は存在しない...`, sender: MessageSender.System }
+                setMessages(prev => [...prev,
+                { id: `sancheck-all-result-${Date.now()}`, content: message, sender: MessageSender.System },
+                { id: `gameover-san-all-${Date.now()}`, content: `### ゲームオーバー\n\n${gameOverCharacter!.name}の正気度が完全に失われた。もはや元の人格は存在しない...`, sender: MessageSender.System }
                 ]);
                 onGameOver();
                 setIsLoading(false);
@@ -871,9 +918,9 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
 
                     // SAN値が0以下になった場合は即座にゲームオーバー
                     if (newSan <= 0) {
-                        setMessages(prev => [...prev, 
-                            { id: `sancheck-result-${Date.now()}`, content: message, sender: MessageSender.System },
-                            { id: `gameover-san-${Date.now()}`, content: `### ゲームオーバー\n\n${character.name}の正気度が完全に失われた。もはや元の人格は存在しない...`, sender: MessageSender.System }
+                        setMessages(prev => [...prev,
+                        { id: `sancheck-result-${Date.now()}`, content: message, sender: MessageSender.System },
+                        { id: `gameover-san-${Date.now()}`, content: `### ゲームオーバー\n\n${character.name}の正気度が完全に失われた。もはや元の人格は存在しない...`, sender: MessageSender.System }
                         ]);
                         onGameOver();
                         setIsLoading(false);
@@ -920,9 +967,9 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
 
                             // SAN値が0以下になった場合は即座にゲームオーバー
                             if (newSan <= 0) {
-                                setMessages(prev => [...prev, 
-                                    { id: `sancheck-result-${Date.now()}`, content: message, sender: MessageSender.System },
-                                    { id: `gameover-san-${Date.now()}`, content: `### ゲームオーバー\n\n${character.name}の正気度が完全に失われた。もはや元の人格は存在しない...`, sender: MessageSender.System }
+                                setMessages(prev => [...prev,
+                                { id: `sancheck-result-${Date.now()}`, content: message, sender: MessageSender.System },
+                                { id: `gameover-san-${Date.now()}`, content: `### ゲームオーバー\n\n${character.name}の正気度が完全に失われた。もはや元の人格は存在しない...`, sender: MessageSender.System }
                                 ]);
                                 onGameOver();
                                 setIsLoading(false);
@@ -1043,9 +1090,9 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
                         {pendingAction && !isLoading && (
                             <div className="flex flex-col sm:flex-row flex-wrap justify-center gap-3 mb-4">
                                 {pendingAction.skillCheck && (
-                                    <button onClick={() => setModalAction({ type: 'skill', skill: pendingAction.skillCheck! })} className={actionButtonClasses}>
+                                    <button onClick={() => setModalAction({ type: 'skill', skill: cleanSkillName(pendingAction.skillCheck!) })} className={actionButtonClasses}>
                                         <BrainCircuit className="mr-2" size={18} />
-                                        〈{pendingAction.skillCheck}〉で技能判定
+                                        〈{cleanSkillName(pendingAction.skillCheck)}〉で技能判定
                                     </button>
                                 )}
                                 {pendingAction.statCheck && (
