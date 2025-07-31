@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, GenerateContentResponse, Chat } from "@google/genai";
-import type { Character, KeeperResponse, ScenarioOutline, Reward } from "../types";
+import type { Character, KeeperResponse, ScenarioOutline } from "../types";
 import { SYSTEM_INSTRUCTION } from "../constants";
 
 if (!process.env.API_KEY) {
@@ -25,7 +25,8 @@ const modelConfig = {
           nullable: true,
           properties: {
             roll: { type: Type.STRING, description: "SANチェックの減少量 (例: '1/1d6')" },
-            reason: { type: Type.STRING, description: "SANチェックの理由" }
+            reason: { type: Type.STRING, description: "SANチェックの理由" },
+            targetAll: { type: Type.BOOLEAN, nullable: true, description: "全探索者がチェックを受ける場合はtrue、個別の場合はfalse（デフォルト）" }
           }
         },
         skillCheck: { type: Type.STRING, nullable: true, description: "判定が推奨される技能名 (例: '〈目星〉')" },
@@ -44,6 +45,15 @@ const modelConfig = {
           properties: {
             roll: { type: Type.STRING, description: "要求するダイスロール (例: '1d6')" },
             reason: { type: Type.STRING, description: "ダイスロールの理由" }
+          }
+        },
+        madnessRecovery: {
+          type: Type.OBJECT,
+          nullable: true,
+          properties: {
+            characterId: { type: Type.STRING, description: "回復する探索者のID" },
+            reason: { type: Type.STRING, description: "狂気回復の理由" },
+            type: { type: Type.STRING, description: "回復する狂気の種類: 'temporary'（一時的狂気）、'indefinite'（不定の狂気）、'both'（両方）" }
           }
         },
         suggestedActions: {
@@ -79,7 +89,7 @@ const { model, config } = modelConfig;
 
 const parseResponse = (response: GenerateContentResponse): KeeperResponse => {
   try {
-    const text = response.text.trim();
+    const text = response.text?.trim() || '';
     // Potentially remove markdown backticks
     const cleanedText = text.replace(/^```json\s*|```$/g, '');
     const parsed = JSON.parse(cleanedText);
@@ -94,6 +104,7 @@ const parseResponse = (response: GenerateContentResponse): KeeperResponse => {
       skillCheck: null,
       statCheck: null,
       diceRollRequired: null,
+      madnessRecovery: null,
       suggestedActions: ["あたりを見回す", "持ち物を確認する"],
       gameOver: false,
       gameClear: false,
@@ -103,20 +114,26 @@ const parseResponse = (response: GenerateContentResponse): KeeperResponse => {
 }
 
 const formatCharacterInfo = (character: Character) => {
-    const weaponsInfo = character.weapons.length > 0
-        ? character.weapons.map(w => `  - ${w.name} (ダメージ: ${w.damage}, ${w.ammoCapacity !== null ? `装弾数: ${w.currentAmmo}/${w.ammoCapacity}` : '近接/投擲'}, 備考: ${w.notes || 'なし'})`).join('\n')
-        : '  なし';
-    const armorInfo = character.armor.length > 0
-        ? character.armor.map(a => `  - ${a.name} (装甲値: ${a.armorValue}, 備考: ${a.notes || 'なし'})`).join('\n')
-        : '  なし';
+  const weaponsInfo = character.weapons.length > 0
+    ? character.weapons.map(w => `  - ${w.name} (ダメージ: ${w.damage}, ${w.ammoCapacity !== null ? `装弾数: ${w.currentAmmo}/${w.ammoCapacity}` : '近接/投擲'}, 備考: ${w.notes || 'なし'})`).join('\n')
+    : '  なし';
+  const armorInfo = character.armor.length > 0
+    ? character.armor.map(a => `  - ${a.name} (装甲値: ${a.armorValue}, 備考: ${a.notes || 'なし'})`).join('\n')
+    : '  なし';
 
-    return `
+  const madnessInfo = character.madness?.type
+    ? `${character.madness.type === 'temporary' ? '一時的狂気' : '不定の狂気'}: ${character.madness.description}${character.madness.duration ? ` (残り${character.madness.duration}ラウンド)` : ''}`
+    : 'なし';
+
+  return `
+- **ID**: ${character.id}
 - **名前**: ${character.name}
 - **職業**: ${character.occupation || '未設定'}
 - **キャラクター設定**: ${character.description || '特になし'}
 - **能力値**: ${JSON.stringify(character.stats)}
 - **HP**: ${character.hp.current}/${character.hp.max}
 - **正気度(SAN)**: ${character.san.current}/${character.san.max}
+- **狂気状態**: ${madnessInfo}
 - **技能**: ${JSON.stringify(character.skills)}
 - **武器**:\n${weaponsInfo}
 - **防具**:\n${armorInfo}
@@ -134,25 +151,25 @@ export const createChatSession = (): Chat => {
 };
 
 const scenarioOutlineSchema = {
-    type: Type.OBJECT,
-    properties: {
-        title: { type: Type.STRING, description: "このシナリオの魅力的でミステリアスなタイトル。" },
-        summary: { type: Type.STRING, description: "ゲームキーパーだけが知る、シナリオの内部的な要約。物語の背景、主要なNPC、舞台設定、予想される展開を含む。" },
-        clearCondition: { type: Type.STRING, description: "探索者たちがゲームをクリアするための具体的な条件。" },
-        failureCondition: { type: Type.STRING, description: "探索者たちがゲームオーバーまたは失敗となる具体的な条件。" },
-        truth: { type: Type.STRING, description: "このシナリオの核心にある秘密や真相。探索者たちが最終的にたどり着くべき、あるいは直面する宇宙的恐怖の真実。" },
-        estimatedPlayTime: { type: Type.STRING, description: "このシナリオをクリアするまでの推定プレイ時間（例：「1~2時間」）。" }
-    },
-    required: ["title", "summary", "clearCondition", "failureCondition", "truth", "estimatedPlayTime"]
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING, description: "このシナリオの魅力的でミステリアスなタイトル。" },
+    summary: { type: Type.STRING, description: "ゲームキーパーだけが知る、シナリオの内部的な要約。物語の背景、主要なNPC、舞台設定、予想される展開を含む。" },
+    clearCondition: { type: Type.STRING, description: "探索者たちがゲームをクリアするための具体的な条件。" },
+    failureCondition: { type: Type.STRING, description: "探索者たちがゲームオーバーまたは失敗となる具体的な条件。" },
+    truth: { type: Type.STRING, description: "このシナリオの核心にある秘密や真相。探索者たちが最終的にたどり着くべき、あるいは直面する宇宙的恐怖の真実。" },
+    estimatedPlayTime: { type: Type.STRING, description: "このシナリオをクリアするまでの推定プレイ時間（例：「1~2時間」）。" }
+  },
+  required: ["title", "summary", "clearCondition", "failureCondition", "truth", "estimatedPlayTime"]
 };
 
 export const generateScenarioOutline = async (
-    characters: Character[],
-    options: {
-        playTime?: string;
-        difficulty?: string;
-        synopsis?: string;
-    } = {}
+  characters: Character[],
+  options: {
+    playTime?: string;
+    difficulty?: string;
+    synopsis?: string;
+  } = {}
 ): Promise<ScenarioOutline> => {
   const characterInfos = characters.map(c => `- **${c.name}** (${c.occupation})`).join('\n');
 
@@ -184,7 +201,7 @@ export const generateScenarioOutline = async (
         responseSchema: scenarioOutlineSchema
       }
     });
-    const jsonText = response.text.trim().replace(/^```json\s*|```$/g, '');
+    const jsonText = response.text?.trim().replace(/^```json\s*|```$/g, '') || '';
     const parsed = JSON.parse(jsonText);
     return parsed as ScenarioOutline;
   } catch (error) {
@@ -203,7 +220,7 @@ export const generateScenarioOutline = async (
 
 export const startNewGame = async (chat: Chat, characters: Character[], scenario: ScenarioOutline): Promise<KeeperResponse> => {
   const characterInfos = characters.map(formatCharacterInfo).join('\n\n');
-  
+
   const prompt = `
     新しいゲームを開始します。
     まず、ゲームキーパーであるあなただけが知る、今回のシナリオの全体像を以下に示します。この内容を常に念頭に置き、物語がこの骨子から大きく逸脱しないように進行してください。
@@ -247,13 +264,39 @@ export const sendPlayerAction = async (
       \nこの判定結果を反映して、物語を続けてください。
     `;
   }
-  
-  const characterStatus = characters.map(c => `- ${c.name}: HP ${c.hp.current}/${c.hp.max}, SAN ${c.san.current}/${c.san.max}`).join('\n');
+
+  const characterStatus = characters.map(c => {
+    let status = `- ${c.name}: HP ${c.hp.current}/${c.hp.max}, SAN ${c.san.current}/${c.san.max}`;
+    if (c.madness && c.madness.type) {
+      const madnessType = c.madness.type === 'temporary' ? '一時的狂気' : '不定の狂気';
+      status += ` [${madnessType}: ${c.madness.description}`;
+      if (c.madness.duration && c.madness.duration > 0) {
+        status += ` (残り${c.madness.duration}ラウンド)`;
+      }
+      status += `]`;
+    }
+    return status;
+  }).join('\n');
+
+  // 狂気状態の探索者がいるかチェック
+  const hasMadCharacters = characters.some(c => c.madness && c.madness.type);
 
   prompt += `
     \n\n現在の探索者たちの状態:
-    ${characterStatus}
+    ${characterStatus}`;
 
+  // 狂気状態の探索者がいる場合のみルールを追加
+  if (hasMadCharacters) {
+    prompt += `
+
+    **重要**: 狂気状態の探索者については以下のルールを適用してください：
+    - 一時的狂気：症状に応じた行動制限（例：パニック状態なら逃走したがる、ヒステリーなら叫び続ける）
+    - 不定の狂気：継続的な症状による行動や判定への影響
+    - 狂気状態と矛盾する行動（冷静な判断、説得など）は失敗しやすくなる`;
+  }
+
+  prompt += `
+    
     この行動と現在の状態に基づき、物語の次のステップを描写し、新たな行動の選択肢を提示してください。
   `
   const response = await chat.sendMessage({ message: prompt });
@@ -288,8 +331,8 @@ export const generateCharacterBackground = async (name: string, occupation: stri
         }
       }
     });
-    
-    const jsonText = response.text.trim().replace(/^```json\s*|```$/g, '');
+
+    const jsonText = response.text?.trim().replace(/^```json\s*|```$/g, '') || '';
     const parsed = JSON.parse(jsonText);
     return parsed.background;
 

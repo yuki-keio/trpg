@@ -43,6 +43,11 @@ export interface Character {
   customOccupationalSkills?: string[];
   weapons: Weapon[];
   armor: Armor[];
+  madness?: {
+    type: 'temporary' | 'indefinite' | null;
+    description: string;
+    duration?: number; // ラウンド数（一時的狂気の場合）
+  };
 }
 
 export enum MessageSender {
@@ -82,10 +87,11 @@ export interface Reward {
 export interface KeeperResponse {
   description: string;
   actionRequired: string;
-  sanityCheck: { roll: string; reason: string } | null;
+  sanityCheck: { roll: string; reason: string; targetAll?: boolean } | null;
   skillCheck: string | null;
   statCheck: { stat: keyof Character['stats']; multiplier?: number; reason: string } | null;
   diceRollRequired: { roll: string; reason: string } | null;
+  madnessRecovery: { characterId: string; reason: string; type: 'temporary' | 'indefinite' | 'both' } | null;
   suggestedActions: string[] | null;
   gameOver: boolean;
   gameClear: boolean;

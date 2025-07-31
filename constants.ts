@@ -1,5 +1,5 @@
 
-import type { Character, Weapon, Armor } from './types';
+import type { Weapon, Armor } from './types';
 
 export const INITIAL_SKILLS: { [key: string]: number } = {
   // === Combat Skills ===
@@ -129,21 +129,21 @@ export const DEFAULT_BACKGROUND_SUGGESTIONS: { title: string; description: strin
 ];
 
 export const PRESET_WEAPONS: Omit<Weapon, 'id' | 'currentAmmo'>[] = [
-    { name: 'こぶし/パンチ', damage: '1d3+db', range: 'タッチ', attacksPerRound: 1, ammoCapacity: null, durability: null, malfunction: null, notes: 'ダメージボーナス(db)が適用される。' },
-    { name: 'キック', damage: '1d6+db', range: 'タッチ', attacksPerRound: 1, ammoCapacity: null, durability: null, malfunction: null, notes: 'ダメージボーナス(db)が適用される。' },
-    { name: '頭突き', damage: '1d4+db', range: 'タッチ', attacksPerRound: 1, ammoCapacity: null, durability: null, malfunction: null, notes: 'ダメージボーナス(db)が適用される。' },
-    { name: '小型ナイフ', damage: '1d4+db', range: 'タッチ', attacksPerRound: 1, ammoCapacity: null, durability: null, malfunction: null, notes: 'ダメージボーナス(db)が適用される。投擲も可能。' },
-    { name: '大型ナイフ', damage: '1d6+db', range: 'タッチ', attacksPerRound: 1, ammoCapacity: null, durability: null, malfunction: null, notes: 'ダメージボーナス(db)が適用される。' },
-    { name: '.22口径ショートオートマチック', damage: '1d6', range: '10m', attacksPerRound: 1, ammoCapacity: 6, durability: null, malfunction: 99, notes: '連射可能(3連バースト)。' },
-    { name: '.38口径リボルバー', damage: '1d10', range: '15m', attacksPerRound: 2, ammoCapacity: 6, durability: null, malfunction: 100, notes: '一般的なリボルバー。' },
-    { name: '.45口径オートマチック', damage: '1d10+2', range: '15m', attacksPerRound: 1, ammoCapacity: 7, durability: null, malfunction: 99, notes: '強力な自動拳銃。' },
-    { name: '12ゲージ・ショットガン', damage: '4d6/2d6/1d6', range: '10m/20m/50m', attacksPerRound: 1, ammoCapacity: 2, durability: null, malfunction: 100, notes: '距離によってダメージが変動する。' },
-    { name: 'トンプソン・サブマシンガン', damage: '1d10+2', range: '20m', attacksPerRound: 1, ammoCapacity: 20, durability: null, malfunction: 98, notes: '連射可能。' },
+  { name: 'こぶし/パンチ', damage: '1d3+db', range: 'タッチ', attacksPerRound: 1, ammoCapacity: null, durability: null, malfunction: null, notes: 'ダメージボーナス(db)が適用される。' },
+  { name: 'キック', damage: '1d6+db', range: 'タッチ', attacksPerRound: 1, ammoCapacity: null, durability: null, malfunction: null, notes: 'ダメージボーナス(db)が適用される。' },
+  { name: '頭突き', damage: '1d4+db', range: 'タッチ', attacksPerRound: 1, ammoCapacity: null, durability: null, malfunction: null, notes: 'ダメージボーナス(db)が適用される。' },
+  { name: '小型ナイフ', damage: '1d4+db', range: 'タッチ', attacksPerRound: 1, ammoCapacity: null, durability: null, malfunction: null, notes: 'ダメージボーナス(db)が適用される。投擲も可能。' },
+  { name: '大型ナイフ', damage: '1d6+db', range: 'タッチ', attacksPerRound: 1, ammoCapacity: null, durability: null, malfunction: null, notes: 'ダメージボーナス(db)が適用される。' },
+  { name: '.22口径ショートオートマチック', damage: '1d6', range: '10m', attacksPerRound: 1, ammoCapacity: 6, durability: null, malfunction: 99, notes: '連射可能(3連バースト)。' },
+  { name: '.38口径リボルバー', damage: '1d10', range: '15m', attacksPerRound: 2, ammoCapacity: 6, durability: null, malfunction: 100, notes: '一般的なリボルバー。' },
+  { name: '.45口径オートマチック', damage: '1d10+2', range: '15m', attacksPerRound: 1, ammoCapacity: 7, durability: null, malfunction: 99, notes: '強力な自動拳銃。' },
+  { name: '12ゲージ・ショットガン', damage: '4d6/2d6/1d6', range: '10m/20m/50m', attacksPerRound: 1, ammoCapacity: 2, durability: null, malfunction: 100, notes: '距離によってダメージが変動する。' },
+  { name: 'トンプソン・サブマシンガン', damage: '1d10+2', range: '20m', attacksPerRound: 1, ammoCapacity: 20, durability: null, malfunction: 98, notes: '連射可能。' },
 ];
 
 export const PRESET_ARMOR: Omit<Armor, 'id'>[] = [
-    { name: '厚い革のコート', armorValue: 1, notes: '一般的な防護服。' },
-    { name: '防弾ベスト', armorValue: 8, notes: '銃弾に対して高い効果を持つ。貫通するライフル弾や近接攻撃には無効。' },
+  { name: '厚い革のコート', armorValue: 1, notes: '一般的な防護服。' },
+  { name: '防弾ベスト', armorValue: 8, notes: '銃弾に対して高い効果を持つ。貫通するライフル弾や近接攻撃には無効。' },
 ];
 
 
@@ -154,7 +154,15 @@ export const SYSTEM_INSTRUCTION = `あなたは、テーブルトークRPG（TRP
 3.  **ルールの適用**: TRPGの基本ルールに従ってゲームを進行します。特に以下の点に注意してください。
     *   **技能判定と能力値判定**: 探索者が何らかの行動を試みる際、どの技能（例：「目星」）で判定すべきか、あるいはどの能力値（例：「STR×5」）で判定すべきかを提案してください。判定結果（成功、失敗、クリティカル、ファンブル）に基づき、物語をドラマチックに展開させてください。
     *   **戦闘**: 探索者が戦闘を行う際、彼らが所持している武器の情報を参照してください。ダメージ計算や弾薬の消費などを描写に含めてください。
-    *   **正気度（SAN）チェック**: もし探索者が宇宙的恐怖に直面した際には、必ずSANチェックを要求してください。チェックの難易度（例: "0/1d4", "1/1d10"）も指定します。正気度が失われることの恐怖を巧みに演出してください。
+    *   **正気度（SAN）チェック**: 探索者が宇宙的恐怖に直面した際には、SANチェックを要求してください。チェックの難易度（例: "0/1d4", "1d5/2d5"）も指定します。ただし、頻度は適度に抑え、本当に恐怖を感じるべき場面でのみ実施してください。個々の探索者が単独で恐怖に触れた場合は個別チェック（targetAllをfalseまたは省略）、全体が同時に恐怖体験をした場合は全体チェック（targetAllをtrue）とします。正気度が失われることの恐怖を巧みに演出してください。
+    *   **狂気判定ルール**: SANチェックの結果として狂気が発症する場合があります。システムが自動判定するので、発症した狂気の症状に基づいて物語を展開してください。
+    *   **狂気状態の考慮**: 探索者が一時的狂気や不定の狂気状態にある場合、その症状に基づいて物語を展開してください。狂気症状と矛盾する行動（パニック状態での冷静な判断、叫び続けている状態での説得など）は自動的に失敗するか、大幅に困難になります。狂気状態の探索者の行動や発言を、症状に基づいて自然に制限・変更してください。
+    *   **狂気の回復**: 探索者が特定の行動を成功させた場合、狂気が回復することがあります。madnessRecoveryフィールドを使用して回復を指示してください：
+        - **一時的狂気の回復**: 比較的簡単に回復します。例：仲間からの励まし、精神分析の成功、恐怖の対象からの距離を置く、小さな成功体験など
+        - **不定の狂気の回復**: より困難で特別な条件が必要です。例：重要な真実の発見、精神分析の大成功、恐怖の根源を完全に克服、長期間の治療など
+        - typeフィールドで'temporary'（一時的狂気のみ）、'indefinite'（不定の狂気のみ）、'both'（両方）を指定できます
+        - **重要**: characterIdには、必ず探索者情報に記載されているIDを正確に使用してください（例：キャラクター情報に「ID: char-001」とある場合は"char-001"を使用）
+        一時的狂気は時間経過でも自動回復しますが、物語上の回復はより劇的で効果的です。
     *   **ダイスロール**: 物語を盛り上げるため、技能判定とは別に、単純なダイスロール（例: "1d6"）をプレイヤーに要求することができます。その際は理由も添えてください。
     *   **プッシュ・ロール**: プレイヤーは一度失敗した技能判定を「プッシュ」して再挑戦できます。これはプレイヤーが大きなリスクを負うことを意味します。プッシュ・ロールに失敗した場合、単なる失敗よりも悪い、深刻な結果（例：正気度の追加減少、怪我、状況の悪化、重要な手がかりの破壊など）を描写し、物語をよりドラマチックにしてください。プッシュ・ロールの判定結果が伝えられたら、その深刻な結果を必ず描写してください。
 4.  **対話と誘導**: プレイヤーからの入力（行動宣言）に対して、自然で一貫性のある応答を返します。プレイヤーが次に何をすべきか迷わないように、具体的で魅力的な行動の選択肢を2～4個提示してください。プレイヤーは提示された選択肢以外にも自由に行動できます。プレイヤーからの入力には、どの探索者が行動しているかが示されている場合があります。

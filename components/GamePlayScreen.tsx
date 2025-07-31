@@ -10,6 +10,48 @@ import { Send, Dices, BrainCircuit, HelpCircle, Bot, User, X, Users, AlertTriang
 import ReactMarkdown from 'react-markdown';
 import { DiceRollModal } from './DiceRollModal';
 
+// 狂気症状のデータ
+const TEMPORARY_MADNESS_SYMPTOMS = [
+    "恐怖で震えが止まらない（全ての行動に-20のペナルティ）",
+    "パニック状態となり、その場から逃げ出そうとする",
+    "恐怖のあまり失神し、1d10ラウンドの間行動不能",
+    "ヒステリック状態となり、大声で叫び続ける",
+    "硬直状態となり、1d6ラウンドの間身動きが取れない",
+    "記憶が混乱し、直前の出来事を忘れてしまう",
+    "幻覚を見始め、存在しないものに反応する",
+    "極度の疑心暗鬼となり、仲間を信用できなくなる"
+];
+
+const INDEFINITE_MADNESS_SYMPTOMS = [
+    "恐怖症：特定の対象に対する極度の恐怖（技能判定-30）",
+    "強迫観念：特定の行動を繰り返さずにはいられない",
+    "妄想症：現実と妄想の区別がつかなくなる",
+    "健忘症：重要な記憶の一部を失う",
+    "人格解離：別の人格が現れることがある",
+    "躁鬱状態：極端な気分の変動に悩まされる",
+    "被害妄想：常に誰かに狙われていると感じる",
+    "幻聴・幻覚：存在しない声や映像を知覚する"
+];
+
+// 狂気判定と症状決定
+const checkForMadness = (character: Character, sanLoss: number): { type: 'temporary' | 'indefinite' | null; description: string; duration?: number } => {
+    // 不定狂気の閾値を計算（SAN最大値の1/5）
+    const indefiniteMadnessThreshold = Math.ceil(character.san.max * 0.2);
+
+    // 不定狂気の閾値以上の損失で不定の狂気（優先判定）
+    if (sanLoss >= indefiniteMadnessThreshold) {
+        const symptom = INDEFINITE_MADNESS_SYMPTOMS[Math.floor(Math.random() * INDEFINITE_MADNESS_SYMPTOMS.length)];
+        return { type: 'indefinite', description: symptom }; // durationは設定しない
+    } else if (sanLoss >= 5) {
+        // 一度に5以上のSAN損失で一時的狂気
+        const symptom = TEMPORARY_MADNESS_SYMPTOMS[Math.floor(Math.random() * TEMPORARY_MADNESS_SYMPTOMS.length)];
+        const duration = Math.floor(Math.random() * 6) + 1; // 1d6ラウンド
+        return { type: 'temporary', description: symptom, duration };
+    }
+
+    return { type: null, description: '' };
+};
+
 const MessageIcon: React.FC<{ sender: MessageSender }> = ({ sender }) => {
     if (sender === MessageSender.Player) {
         return <User className="h-5 w-5 text-purple-300" />;
@@ -49,10 +91,10 @@ const ChatMessage: React.FC<{ message: Message }> = ({ message }) => {
 interface ActionModalProps {
     characters: Character[];
     action: { type: 'skill', skill: string }
-    | { type: 'sanity', roll: string, reason: string }
+    | { type: 'sanity', roll: string, reason: string, targetAll?: boolean }
     | { type: 'stat', stat: keyof Character['stats'], multiplier?: number, reason: string };
     onClose: () => void;
-    onSelect: (characterId: string) => void;
+    onSelect: (characterId: string | 'all') => void;
 }
 
 const ActionModal: React.FC<ActionModalProps> = ({ characters, action, onClose, onSelect }) => {
@@ -75,6 +117,14 @@ const ActionModal: React.FC<ActionModalProps> = ({ characters, action, onClose, 
                 </div>
                 <p className="text-gray-300 mb-6">{subtitle}</p>
                 <div className="space-y-3">
+                    {action.type === 'sanity' && action.targetAll && (
+                        <button
+                            onClick={() => onSelect('all')}
+                            className="w-full text-center px-4 py-3 bg-red-700 hover:bg-red-600 text-white font-bold rounded-lg transition-colors transform hover:scale-105"
+                        >
+                            全員でSAN値チェック
+                        </button>
+                    )}
                     {characters.map(char => (
                         <button key={char.id} onClick={() => onSelect(char.id)}
                             className="w-full text-left px-4 py-3 bg-gray-700 hover:bg-gray-600 text-gray-200 font-semibold rounded-lg transition-colors transform hover:scale-105">
@@ -134,8 +184,97 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
         }));
     }, []);
 
+    // 一時的狂気のラウンド数を減らす関数
+    const decrementMadnessDuration = useCallback(() => {
+        setCharacters(prev => {
+            const updatedCharacters = prev.map(character => {
+                if (character.madness?.type === 'temporary' && character.madness.duration !== undefined && character.madness.duration > 0) {
+                    const newDuration = character.madness.duration - 1;
+
+                    if (newDuration <= 0) {
+                        // 一時的狂気が回復
+                        setTimeout(() => {
+                            const recoveryMessage = `✨ **一時的狂気回復: ${character.name}**\n時間の経過により一時的狂気が回復した。`;
+                            setMessages(prevMessages => [...prevMessages, {
+                                id: `auto-madness-recovery-${Date.now()}-${prevMessages.length}`,
+                                content: recoveryMessage,
+                                sender: MessageSender.System
+                            }]);
+                        }, 100);
+
+                        return {
+                            ...character,
+                            madness: { type: null, description: '' }
+                        };
+                    } else {
+                        return {
+                            ...character,
+                            madness: {
+                                ...character.madness,
+                                duration: newDuration
+                            }
+                        };
+                    }
+                }
+                return character;
+            });
+
+            return updatedCharacters;
+        });
+    }, []);
+
     const processKeeperResponse = useCallback((response: KeeperResponse) => {
         setMessages(prev => [...prev, { id: `keeper-${Date.now()}-${prev.length}`, content: response.description, sender: MessageSender.Keeper }]);
+
+        // 狂気回復の処理
+        if (response.madnessRecovery) {
+            const { characterId, reason, type } = response.madnessRecovery;
+            console.log(`[DEBUG] Madness recovery request:`, { characterId, reason, type });
+            console.log(`[DEBUG] Available characters:`, characters.map(c => ({ id: c.id, name: c.name, madness: c.madness })));
+
+            setCharacters(prev => {
+                const character = prev.find(c => c.id === characterId);
+                console.log(`[DEBUG] Found character:`, character ? { id: character.id, name: character.name, madness: character.madness } : 'null');
+
+                if (character && character.madness?.type) {
+                    const shouldRecover =
+                        type === 'both' ||
+                        (type === 'temporary' && character.madness.type === 'temporary') ||
+                        (type === 'indefinite' && character.madness.type === 'indefinite');
+
+                    if (shouldRecover) {
+                        const recoveryMessage = `✨ **狂気回復: ${character.name}**\n${reason}により、${character.madness.type === 'temporary' ? '一時的狂気' : '不定の狂気'}が回復した。`;
+
+                        // 回復メッセージを即座に追加
+                        setTimeout(() => {
+                            setMessages(prevMessages => [...prevMessages, {
+                                id: `madness-recovery-${Date.now()}-${prevMessages.length}`,
+                                content: recoveryMessage,
+                                sender: MessageSender.System
+                            }]);
+                        }, 100);
+
+                        return prev.map(c =>
+                            c.id === characterId
+                                ? { ...c, madness: { type: null, description: '' } }
+                                : c
+                        );
+                    }
+                } else {
+                    // 狂気状態でないキャラクターの場合の警告メッセージ
+                    const warningMessage = `⚠️ **回復処理**: ${character?.name || '不明なキャラクター'}は現在狂気状態ではありません。`;
+                    setTimeout(() => {
+                        setMessages(prevMessages => [...prevMessages, {
+                            id: `madness-recovery-warning-${Date.now()}`,
+                            content: warningMessage,
+                            sender: MessageSender.System
+                        }]);
+                    }, 100);
+                }
+
+                return prev;
+            });
+        }
 
         if (response.gameClear) {
             onGameClear(response.rewards);
@@ -192,6 +331,9 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
     const handlePlayerAction = useCallback(async (actionText: string, rollResult?: { characterName: string; skill: string; value: number; result: string; dice: number }) => {
         if (!actionText.trim() || !chatSession) return;
 
+        // プレイヤー行動時に一時的狂気のラウンド数を減少
+        decrementMadnessDuration();
+
         setLastFailedSkillCheck(null);
         setMessages(prev => [...prev, { id: `player-${Date.now()}-${prev.length}`, content: actionText, sender: MessageSender.Player }]);
         setIsLoading(true);
@@ -200,7 +342,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
 
         const response = await sendPlayerAction(chatSession, actionText, characters, rollResult);
         processKeeperResponse(response);
-    }, [characters, processKeeperResponse, chatSession]);
+    }, [characters, processKeeperResponse, chatSession, decrementMadnessDuration]);
 
     const handleSystemAction = useCallback(async (actionText: string, systemMessage: string) => {
         if (!chatSession) return;
@@ -230,6 +372,9 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
     const handleSkillCheck = useCallback((skill: string, characterId: string) => {
         setPendingAction(null);
         setLastFailedSkillCheck(null);
+
+        // 技能判定実行時に一時的狂気のラウンド数を減少
+        decrementMadnessDuration();
 
         const character = characters.find(c => c.id === characterId)!;
         const cleanedSkill = skill.replace(/[〈〉]/g, '');
@@ -273,13 +418,16 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
                 }
             }
         });
-    }, [characters, chatSession, processKeeperResponse]);
+    }, [characters, chatSession, processKeeperResponse, decrementMadnessDuration]);
 
     const handleStatCheck = useCallback((stat: keyof Character['stats'], multiplier: number = 5, reason: string, characterId: string) => {
         setPendingAction(null);
         setLastFailedSkillCheck(null);
 
-        const character = characters.find(c => c.id === characterId)!;
+        // 能力値判定実行時に一時的狂気のラウンド数を減少
+        decrementMadnessDuration();
+
+        const character = characters.find(c => c.id === characterId)!;;
         const statValue = character.stats[stat] ?? 0;
         const targetValue = statValue * multiplier;
         const checkName = `${stat}×${multiplier}`;
@@ -322,7 +470,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
                 }
             }
         });
-    }, [characters, chatSession, processKeeperResponse]);
+    }, [characters, chatSession, processKeeperResponse, decrementMadnessDuration]);
 
     const handleDeclinePushRoll = () => {
         if (!lastFailedSkillCheck || !chatSession) return;
@@ -353,6 +501,9 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
         if (!lastFailedSkillCheck || !chatSession) return;
         const { characterId, skill, value } = lastFailedSkillCheck;
         const character = characters.find(c => c.id === characterId)!;
+
+        // プッシュロール実行時に一時的狂気のラウンド数を減少
+        decrementMadnessDuration();
 
         const systemMessage = `**プッシュ・ロール！**\n${character.name}は失敗にも屈せず、再び〈${skill}〉に挑戦する...！しかし、これに失敗すれば、ただでは済まないだろう。`;
         setMessages(prev => [...prev, { id: `push-start-${Date.now()}-${prev.length}`, content: systemMessage, sender: MessageSender.System }]);
@@ -392,27 +543,409 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
     };
 
 
-    const handleSanityCheck = (roll: string, reason: string, characterId: string) => {
+    // 固定値かどうかを判定するヘルパー関数（共通）
+    const isFixedValue = (notation: string): boolean => {
+        const trimmed = notation.trim();
+        console.log(`[DEBUG] isFixedValue checking: "${notation}" -> trimmed: "${trimmed}"`);
+        const result = /^\d+$/.test(trimmed);
+        console.log(`[DEBUG] isFixedValue result:`, result);
+        return result;
+    };
+
+    // 固定値の場合は直接値を返す（共通）
+    const parseFixedOrRoll = (notation: string): number => {
+        console.log(`[DEBUG] parseFixedOrRoll called with: "${notation}"`);
+        console.log(`[DEBUG] notation type:`, typeof notation);
+        console.log(`[DEBUG] notation length:`, notation.length);
+        console.log(`[DEBUG] notation charCodes:`, [...notation].map(c => c.charCodeAt(0)));
+
+        if (isFixedValue(notation)) {
+            const trimmed = notation.trim();
+            const result = parseInt(trimmed, 10);
+            console.log(`[DEBUG] parseInt("${trimmed}", 10) =`, result);
+            console.log(`[DEBUG] isNaN(result):`, isNaN(result));
+            return isNaN(result) ? 0 : result;
+        }
+        // ダイスロールが必要な場合は-1を返す（後でダイスロールする）
+        console.log(`[DEBUG] Recognized as dice notation, returning -1`);
+        return -1;
+    };
+
+    const handleSanityCheck = (roll: string, reason: string, characterId: string | 'all') => {
         setLastFailedSkillCheck(null);
+
+        // デバッグ：入力されたroll文字列を確認
+        console.log(`[DEBUG] handleSanityCheck called with roll: "${roll}"`);
+
+        // SANチェック実行時に一時的狂気のラウンド数を減少
+        decrementMadnessDuration();
+
+        // 全員でのSANチェック結果を処理するヘルパー関数
+        const processAllCharactersSanCheck = (
+            results: Array<{ character: Character, sanRoll: number, isSuccess: boolean }>,
+            successLoss: number,
+            failureLoss: number,
+            reason: string
+        ) => {
+            const resultMessages: string[] = [];
+            let anyMadness = false;
+            let gameOverCharacter: Character | null = null;
+
+            results.forEach(({ character, sanRoll, isSuccess }) => {
+                const currentSan = character.san.current;
+                const actualLoss = isSuccess ? successLoss : failureLoss;
+                const newSan = Math.max(0, currentSan - actualLoss);
+
+                let madnessResult: { type: 'temporary' | 'indefinite' | null; description: string; duration?: number } = { type: null, description: '' };
+                let madnessMessage = '';
+
+                if (actualLoss > 0) {
+                    madnessResult = checkForMadness(character, actualLoss);
+                    if (madnessResult.type) {
+                        anyMadness = true;
+                        madnessMessage = madnessResult.type === 'temporary'
+                            ? ` **一時的狂気発症**: ${madnessResult.description}`
+                            : ` **不定の狂気発症**: ${madnessResult.description}`;
+                    }
+                }
+
+                const resultText = isSuccess ? "成功" : "失敗";
+                const comparisonSymbol = isSuccess ? "≤" : ">";
+
+                resultMessages.push(`**${character.name}**: ${sanRoll} ${comparisonSymbol} ${currentSan} → ${resultText}${actualLoss > 0 ? ` (SAN損失: ${actualLoss})` : ''}${madnessMessage}`);
+
+                updateCharacterState(character.id, c => ({
+                    ...c,
+                    san: { ...c.san, current: newSan },
+                    madness: madnessResult.type ? {
+                        type: madnessResult.type,
+                        description: madnessResult.description,
+                        ...(madnessResult.duration !== undefined ? { duration: madnessResult.duration } : {})
+                    } : c.madness
+                }));
+
+                // SAN値が0以下になったキャラクターをチェック
+                if (newSan <= 0 && !gameOverCharacter) {
+                    gameOverCharacter = character;
+                }
+            });
+
+            const message = `🧠 **全員の正気度チェック: ${reason}**\n${resultMessages.join('\n')}`;
+
+            // SAN値が0以下になったキャラクターがいる場合は即座にゲームオーバー
+            if (gameOverCharacter) {
+                setMessages(prev => [...prev, 
+                    { id: `sancheck-all-result-${Date.now()}`, content: message, sender: MessageSender.System },
+                    { id: `gameover-san-all-${Date.now()}`, content: `### ゲームオーバー\n\n${gameOverCharacter!.name}の正気度が完全に失われた。もはや元の人格は存在しない...`, sender: MessageSender.System }
+                ]);
+                onGameOver();
+                setIsLoading(false);
+                setPendingAction(null);
+                return;
+            }
+
+            const actionText = `全員が「${reason}」による正気度チェックを行った。${anyMadness ? '一部のキャラクターに狂気が発症。' : ''}`;
+            handleSystemAction(actionText, message);
+        };
+
+        if (characterId === 'all') {
+            // 全員でSANチェック
+            setDiceRollRequest({
+                notation: '1d100',
+                reason: `全員の正気度チェック: ${reason}`,
+                onComplete: (firstRoll) => {
+                    // 成功/失敗判定用のダイスロール結果を全員に使用
+                    const sanCheckRoll = firstRoll;
+
+                    // SAN損失のダイスロールを別途実行
+                    const rollParts = roll.split('/');
+
+                    if (rollParts.length === 2) {
+                        // "1/1d8" 形式の場合、まず成功者を判定してから適切なSAN損失を決定
+                        const results: Array<{ character: Character, sanRoll: number, isSuccess: boolean }> = [];
+
+                        characters.forEach(character => {
+                            const currentSan = character.san.current;
+                            const isSuccess = sanCheckRoll <= currentSan;
+                            results.push({ character, sanRoll: sanCheckRoll, isSuccess });
+                        });
+
+                        // 成功者と失敗者がいるかチェック
+                        const hasSuccess = results.some(r => r.isSuccess);
+                        const hasFailure = results.some(r => !r.isSuccess);
+
+                        if (hasSuccess && hasFailure) {
+                            // 成功者と失敗者がいる場合、両方のSAN損失をロール
+                            const successRoll = rollParts[0];
+                            const failureRoll = rollParts[1];
+
+                            // 成功時のSAN損失を処理（固定値またはダイスロール）
+                            const successFixed = parseFixedOrRoll(successRoll);
+                            if (successFixed >= 0) {
+                                // 成功時が固定値の場合、失敗時の処理へ
+                                const failureFixed = parseFixedOrRoll(failureRoll);
+                                if (failureFixed >= 0) {
+                                    // 両方固定値の場合
+                                    console.log(`[DEBUG] Both success and failure are fixed values: ${successFixed}, ${failureFixed}`);
+                                    setDiceRollRequest(null);
+                                    processAllCharactersSanCheck(results, successFixed, failureFixed, reason);
+                                } else {
+                                    // 成功時固定値、失敗時ダイスロール
+                                    setDiceRollRequest({
+                                        notation: failureRoll,
+                                        reason: `失敗時のSAN損失: ${reason}`,
+                                        onComplete: (failureLoss) => {
+                                            setDiceRollRequest(null);
+                                            processAllCharactersSanCheck(results, successFixed, failureLoss, reason);
+                                        }
+                                    });
+                                }
+                            } else {
+                                // 成功時がダイスロールの場合
+                                setDiceRollRequest({
+                                    notation: successRoll,
+                                    reason: `成功時のSAN損失: ${reason}`,
+                                    onComplete: (successLoss) => {
+                                        const failureFixed = parseFixedOrRoll(failureRoll);
+                                        if (failureFixed >= 0) {
+                                            // 成功時ダイスロール、失敗時固定値
+                                            setDiceRollRequest(null);
+                                            processAllCharactersSanCheck(results, successLoss, failureFixed, reason);
+                                        } else {
+                                            // 両方ダイスロール
+                                            setDiceRollRequest({
+                                                notation: failureRoll,
+                                                reason: `失敗時のSAN損失: ${reason}`,
+                                                onComplete: (failureLoss) => {
+                                                    setDiceRollRequest(null);
+                                                    processAllCharactersSanCheck(results, successLoss, failureLoss, reason);
+                                                }
+                                            });
+                                        }
+                                    }
+                                });
+                            }
+                        } else if (hasSuccess) {
+                            // 全員成功の場合
+                            const successFixed = parseFixedOrRoll(rollParts[0]);
+                            if (successFixed >= 0) {
+                                // 固定値の場合
+                                console.log(`[DEBUG] All success with fixed value: ${successFixed}`);
+                                setDiceRollRequest(null);
+                                processAllCharactersSanCheck(results, successFixed, 0, reason);
+                            } else {
+                                // ダイスロールの場合
+                                setDiceRollRequest({
+                                    notation: rollParts[0],
+                                    reason: `成功時のSAN損失: ${reason}`,
+                                    onComplete: (successLoss) => {
+                                        setDiceRollRequest(null);
+                                        processAllCharactersSanCheck(results, successLoss, 0, reason);
+                                    }
+                                });
+                            }
+                        } else {
+                            // 全員失敗の場合
+                            const failureFixed = parseFixedOrRoll(rollParts[1]);
+                            if (failureFixed >= 0) {
+                                // 固定値の場合
+                                console.log(`[DEBUG] All failure with fixed value: ${failureFixed}`);
+                                setDiceRollRequest(null);
+                                processAllCharactersSanCheck(results, 0, failureFixed, reason);
+                            } else {
+                                // ダイスロールの場合
+                                setDiceRollRequest({
+                                    notation: rollParts[1],
+                                    reason: `失敗時のSAN損失: ${reason}`,
+                                    onComplete: (failureLoss) => {
+                                        setDiceRollRequest(null);
+                                        processAllCharactersSanCheck(results, 0, failureLoss, reason);
+                                    }
+                                });
+                            }
+                        }
+                    } else {
+                        // 単一のダイスロール形式（"1d4"など）
+                        const rollFixed = parseFixedOrRoll(roll);
+                        if (rollFixed >= 0) {
+                            // 固定値の場合
+                            console.log(`[DEBUG] Single roll with fixed value: ${rollFixed}`);
+                            setDiceRollRequest(null);
+
+                            const results: Array<{ character: Character, sanRoll: number, isSuccess: boolean }> = [];
+                            characters.forEach(character => {
+                                const currentSan = character.san.current;
+                                const isSuccess = sanCheckRoll <= currentSan;
+                                results.push({ character, sanRoll: sanCheckRoll, isSuccess });
+                            });
+
+                            processAllCharactersSanCheck(results, rollFixed, rollFixed, reason);
+                        } else {
+                            // ダイスロールの場合
+                            setDiceRollRequest({
+                                notation: roll,
+                                reason: `SAN損失: ${reason}`,
+                                onComplete: (sanLoss) => {
+                                    setDiceRollRequest(null);
+
+                                    const results: Array<{ character: Character, sanRoll: number, isSuccess: boolean }> = [];
+                                    characters.forEach(character => {
+                                        const currentSan = character.san.current;
+                                        const isSuccess = sanCheckRoll <= currentSan;
+                                        results.push({ character, sanRoll: sanCheckRoll, isSuccess });
+                                    });
+
+                                    processAllCharactersSanCheck(results, sanLoss, sanLoss, reason);
+                                }
+                            });
+                        }
+                    }
+                }
+            });
+            return;
+        }
+
+        // 個別キャラクターのSANチェック（既存のロジック）
         const character = characters.find(c => c.id === characterId)!;
+        const currentSan = character.san.current;
 
+        // 成功/失敗の判定を行うため、まず1d100を振る
         setDiceRollRequest({
-            notation: roll,
-            reason: `SANチェック: ${reason}`,
-            onComplete: (sanLoss) => {
-                setDiceRollRequest(null);
-                const newSan = Math.max(0, character.san.current - sanLoss);
-                const message = `🧠 **正気度チェック: ${reason} (${character.name})**\n- **SAN損失:** ${sanLoss} (${character.san.current} → ${newSan})`;
+            notation: '1d100',
+            reason: `SANチェック: ${reason} (${character.name})`,
+            onComplete: (sanRoll) => {
+                const isSuccess = sanRoll <= currentSan;
+                let sanLossRoll: string;
 
-                updateCharacterState(characterId, c => ({ ...c, san: { ...c.san, current: newSan } }));
+                // 成功/失敗に応じてSAN損失を分ける（"1/1d6" → 成功時1、失敗時1d6）
+                const rollParts = roll.split('/');
+                console.log(`[DEBUG] Split "${roll}" into rollParts:`, rollParts);
+                console.log(`[DEBUG] rollParts.length:`, rollParts.length);
+                if (rollParts.length === 2) {
+                    sanLossRoll = isSuccess ? rollParts[0] : rollParts[1];
+                    console.log(`[DEBUG] isSuccess:`, isSuccess);
+                    console.log(`[DEBUG] Selected rollParts[${isSuccess ? 0 : 1}]:`, rollParts[isSuccess ? 0 : 1]);
+                    console.log(`[DEBUG] Selected sanLossRoll:`, sanLossRoll);
+                    console.log(`[DEBUG] sanLossRoll type:`, typeof sanLossRoll);
+                    console.log(`[DEBUG] sanLossRoll length:`, sanLossRoll.length);
+                } else {
+                    // 古い形式（"1d4"など）の場合はそのまま使用
+                    sanLossRoll = roll;
+                    console.log(`[DEBUG] Using single roll format:`, sanLossRoll);
+                }
 
-                handleSystemAction(`${character.name}が正気度チェックに失敗し、SANを${sanLoss}失った。`, message);
+                // 固定値の場合はダイスロールをスキップ
+                const fixedSanLoss = parseFixedOrRoll(sanLossRoll);
+                console.log(`[DEBUG] parseFixedOrRoll returned:`, fixedSanLoss);
+                if (fixedSanLoss >= 0) {
+                    console.log(`[DEBUG] Processing as fixed value. SAN loss will be:`, fixedSanLoss);
+                    // 固定値の場合は直接処理
+                    setDiceRollRequest(null);
+                    const newSan = Math.max(0, character.san.current - fixedSanLoss);
+                    console.log(`[DEBUG] Character SAN: ${character.san.current} - ${fixedSanLoss} = ${newSan}`);
+                    const resultText = isSuccess ? "成功" : "失敗";
+                    const comparisonSymbol = isSuccess ? "≤" : ">";
+
+                    // 狂気判定
+                    const madnessResult = checkForMadness(character, fixedSanLoss);
+                    let madnessMessage = '';
+                    if (madnessResult.type) {
+                        const madnessTypeText = madnessResult.type === 'temporary' ? '一時的狂気' : '不定の狂気';
+                        madnessMessage = `\n- **${madnessTypeText}**: ${madnessResult.description}`;
+                        if (madnessResult.duration) {
+                            madnessMessage += ` (${madnessResult.duration}ラウンド)`;
+                        }
+                    }
+
+                    const message = `🧠 **正気度チェック: ${reason} (${character.name})**\n- **判定:** ${sanRoll} ${comparisonSymbol} ${currentSan} → ${resultText}\n- **SAN損失:** ${fixedSanLoss} (${character.san.current} → ${newSan})${madnessMessage}`;
+
+                    updateCharacterState(characterId, c => ({
+                        ...c,
+                        san: { ...c.san, current: newSan },
+                        madness: madnessResult.type ? {
+                            type: madnessResult.type,
+                            description: madnessResult.description,
+                            ...(madnessResult.duration !== undefined ? { duration: madnessResult.duration } : {})
+                        } : c.madness
+                    }));
+
+                    // SAN値が0以下になった場合は即座にゲームオーバー
+                    if (newSan <= 0) {
+                        setMessages(prev => [...prev, 
+                            { id: `sancheck-result-${Date.now()}`, content: message, sender: MessageSender.System },
+                            { id: `gameover-san-${Date.now()}`, content: `### ゲームオーバー\n\n${character.name}の正気度が完全に失われた。もはや元の人格は存在しない...`, sender: MessageSender.System }
+                        ]);
+                        onGameOver();
+                        setIsLoading(false);
+                        setPendingAction(null);
+                        return;
+                    }
+
+                    // SANチェック結果の詳細をAIに送信
+                    const actionText = `${character.name}が「${reason}」による正気度チェックを実行した。判定：${sanRoll}（目標値：${currentSan}）→${resultText}。SAN損失：${fixedSanLoss}。${madnessResult.type ? `${madnessResult.type === 'temporary' ? '一時的狂気' : '不定の狂気'}「${madnessResult.description}」が発症。` : '狂気は発症せず。'}`;
+                    handleSystemAction(actionText, message);
+                } else {
+                    // ダイスロールが必要な場合
+                    setDiceRollRequest({
+                        notation: sanLossRoll,
+                        reason: `SAN損失: ${reason} (${character.name})`,
+                        onComplete: (sanLoss) => {
+                            setDiceRollRequest(null);
+                            const newSan = Math.max(0, character.san.current - sanLoss);
+                            const resultText = isSuccess ? "成功" : "失敗";
+                            const comparisonSymbol = isSuccess ? "≤" : ">";
+
+                            // 狂気判定
+                            const madnessResult = checkForMadness(character, sanLoss);
+                            let madnessMessage = '';
+                            if (madnessResult.type) {
+                                const madnessTypeText = madnessResult.type === 'temporary' ? '一時的狂気' : '不定の狂気';
+                                madnessMessage = `\n- **${madnessTypeText}**: ${madnessResult.description}`;
+                                if (madnessResult.duration) {
+                                    madnessMessage += ` (${madnessResult.duration}ラウンド)`;
+                                }
+                            }
+
+                            const message = `🧠 **正気度チェック: ${reason} (${character.name})**\n- **判定:** ${sanRoll} ${comparisonSymbol} ${currentSan} → ${resultText}\n- **SAN損失:** ${sanLoss} (${character.san.current} → ${newSan})${madnessMessage}`;
+
+                            updateCharacterState(characterId, c => ({
+                                ...c,
+                                san: { ...c.san, current: newSan },
+                                madness: madnessResult.type ? {
+                                    type: madnessResult.type,
+                                    description: madnessResult.description,
+                                    ...(madnessResult.duration !== undefined ? { duration: madnessResult.duration } : {})
+                                } : c.madness
+                            }));
+
+                            // SAN値が0以下になった場合は即座にゲームオーバー
+                            if (newSan <= 0) {
+                                setMessages(prev => [...prev, 
+                                    { id: `sancheck-result-${Date.now()}`, content: message, sender: MessageSender.System },
+                                    { id: `gameover-san-${Date.now()}`, content: `### ゲームオーバー\n\n${character.name}の正気度が完全に失われた。もはや元の人格は存在しない...`, sender: MessageSender.System }
+                                ]);
+                                onGameOver();
+                                setIsLoading(false);
+                                setPendingAction(null);
+                                return;
+                            }
+
+                            // SANチェック結果の詳細をAIに送信
+                            const actionText = `${character.name}が「${reason}」による正気度チェックを実行した。判定：${sanRoll}（目標値：${currentSan}）→${resultText}。SAN損失：${sanLoss}。${madnessResult.type ? `${madnessResult.type === 'temporary' ? '一時的狂気' : '不定の狂気'}「${madnessResult.description}」が発症。` : '狂気は発症せず。'}`;
+                            handleSystemAction(actionText, message);
+                        }
+                    });
+                }
             }
         });
     };
 
     const handleGenericDiceRoll = (roll: string, reason: string) => {
         setLastFailedSkillCheck(null);
+
+        // 汎用ダイスロール実行時に一時的狂気のラウンド数を減少
+        decrementMadnessDuration();
+
         setDiceRollRequest({
             notation: roll,
             reason: reason,
