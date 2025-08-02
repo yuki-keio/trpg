@@ -50,7 +50,7 @@ const cleanSkillName = (skill: string): string => {
 };
 
 // 狂気判定と症状決定
-const checkForMadness = (character: Character, sanLoss: number): { type: 'temporary' | 'indefinite' | null; description: string; duration?: number } => {
+const checkForMadness = (character: Character, sanLoss: number): { type: 'temporary' | 'indefinite' | null; description: string; duration?: number; needsIdeaCheck?: boolean } => {
     // 不定狂気の閾値を計算（SAN最大値の1/5）
     const indefiniteMadnessThreshold = Math.ceil(character.san.max * 0.2);
 
@@ -59,13 +59,18 @@ const checkForMadness = (character: Character, sanLoss: number): { type: 'tempor
         const symptom = INDEFINITE_MADNESS_SYMPTOMS[Math.floor(Math.random() * INDEFINITE_MADNESS_SYMPTOMS.length)];
         return { type: 'indefinite', description: symptom }; // durationは設定しない
     } else if (sanLoss >= 5) {
-        // 一度に5以上のSAN損失で一時的狂気
-        const symptom = TEMPORARY_MADNESS_SYMPTOMS[Math.floor(Math.random() * TEMPORARY_MADNESS_SYMPTOMS.length)];
-        const duration = Math.floor(Math.random() * 6) + 1; // 1d6ラウンド
-        return { type: 'temporary', description: symptom, duration };
+        // 一度に5以上のSAN損失で一時的狂気の可能性（アイデア判定が必要）
+        return { type: null, description: '', needsIdeaCheck: true };
     }
 
     return { type: null, description: '' };
+};
+
+// アイデア判定後の一時的狂気処理
+const processTemporaryMadness = (): { type: 'temporary'; description: string; duration: number } => {
+    const symptom = TEMPORARY_MADNESS_SYMPTOMS[Math.floor(Math.random() * TEMPORARY_MADNESS_SYMPTOMS.length)];
+    const duration = Math.floor(Math.random() * 6) + 1; // 1d6ラウンド
+    return { type: 'temporary', description: symptom, duration };
 };
 
 // 狂気によるペナルティを計算する関数
@@ -627,6 +632,85 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
         // SANチェック実行時に一時的狂気のラウンド数を減少
         decrementMadnessDuration();
 
+        // アイデア判定のシーケンス処理
+        const processIdeaCheckSequence = (
+            charactersNeedingCheck: Array<{ character: Character, sanLoss: number }>,
+            currentIndex: number,
+            originalReason: string,
+            madnessResults: Array<{ characterName: string, madnessType: string, description: string }> = []
+        ) => {
+            if (currentIndex >= charactersNeedingCheck.length) {
+                // 全てのアイデア判定が完了した後、AIキーパーに結果を送信
+                const madnessInfo = madnessResults.length > 0
+                    ? `アイデア判定の結果、${madnessResults.map(r => `${r.characterName}:${r.madnessType}「${r.description}」`).join('、')}が発症。`
+                    : 'アイデア判定の結果、誰も発狂しなかった。';
+                const actionText = `全員が「${originalReason}」による正気度チェックとアイデア判定を行った。${madnessInfo}`;
+                const systemMessage = `**アイデア判定完了**\n${madnessInfo}`;
+
+                handleSystemAction(actionText, systemMessage);
+                return;
+            }
+
+            const { character } = charactersNeedingCheck[currentIndex];
+            const ideaValue = character.stats.INT * 5;
+
+            setDiceRollRequest({
+                notation: '1d100',
+                reason: `アイデア判定 (一時的狂気チェック) - ${character.name}`,
+                onComplete: (ideaRoll) => {
+                    setDiceRollRequest(null); // モーダルを閉じる
+
+                    const isIdeaSuccess = ideaRoll <= ideaValue;
+                    let madnessMessage = '';
+                    let madnessResult: { type: 'temporary' | null; description: string; duration?: number } = { type: null, description: '' };
+
+                    if (isIdeaSuccess) {
+                        // アイデア判定成功 → 一時的狂気発症
+                        madnessResult = processTemporaryMadness();
+                        madnessMessage = ` → **一時的狂気発症**: ${madnessResult.description}`;
+                    } else {
+                        // アイデア判定成功 → 発狂しない
+                        madnessMessage = ' → 発狂しなかった';
+                    }
+
+                    const ideaMessage = `🧠 **アイデア判定: ${character.name}**\n- **結果:** ${ideaRoll} ${isIdeaSuccess ? '≤' : '>'} ${ideaValue} → ${isIdeaSuccess ? '成功' : '失敗'}${madnessMessage}`;
+
+                    setMessages(prev => [...prev, {
+                        id: `idea-check-${Date.now()}-${currentIndex}`,
+                        content: ideaMessage,
+                        sender: MessageSender.System
+                    }]);
+
+                    // キャラクターの狂気状態を更新
+                    if (madnessResult.type) {
+                        updateCharacterState(character.id, c => ({
+                            ...c,
+                            madness: {
+                                type: madnessResult.type!,
+                                description: madnessResult.description,
+                                ...(madnessResult.duration !== undefined ? { duration: madnessResult.duration } : {})
+                            }
+                        }));
+                    }
+
+                    // 狂気の結果を記録して次のキャラクターの処理へ
+                    const updatedMadnessResults = [...madnessResults];
+                    if (madnessResult.type) {
+                        const madnessType = madnessResult.type === 'temporary' ? '一時的狂気' : '不定の狂気';
+                        updatedMadnessResults.push({
+                            characterName: character.name,
+                            madnessType: madnessType,
+                            description: madnessResult.description
+                        });
+                    }
+
+                    setTimeout(() => {
+                        processIdeaCheckSequence(charactersNeedingCheck, currentIndex + 1, originalReason, updatedMadnessResults);
+                    }, 100);
+                }
+            });
+        };
+
         // 全員でのSANチェック結果を処理するヘルパー関数
         const processAllCharactersSanCheck = (
             results: Array<{ character: Character, sanRoll: number, isSuccess: boolean }>,
@@ -635,21 +719,23 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
             reason: string
         ) => {
             const resultMessages: string[] = [];
-            let anyMadness = false;
             let gameOverCharacter: Character | null = null;
+            const charactersNeedingIdeaCheck: Array<{ character: Character, sanLoss: number }> = [];
 
             results.forEach(({ character, sanRoll, isSuccess }) => {
                 const currentSan = character.san.current;
                 const actualLoss = isSuccess ? successLoss : failureLoss;
                 const newSan = Math.max(0, currentSan - actualLoss);
 
-                let madnessResult: { type: 'temporary' | 'indefinite' | null; description: string; duration?: number } = { type: null, description: '' };
+                let madnessResult: { type: 'temporary' | 'indefinite' | null; description: string; duration?: number; needsIdeaCheck?: boolean } = { type: null, description: '' };
                 let madnessMessage = '';
 
                 if (actualLoss > 0) {
                     madnessResult = checkForMadness(character, actualLoss);
-                    if (madnessResult.type) {
-                        anyMadness = true;
+                    if (madnessResult.needsIdeaCheck) {
+                        // アイデア判定が必要な場合は後で処理
+                        charactersNeedingIdeaCheck.push({ character, sanLoss: actualLoss });
+                    } else if (madnessResult.type) {
                         madnessMessage = madnessResult.type === 'temporary'
                             ? ` **一時的狂気発症**: ${madnessResult.description}`
                             : ` **不定の狂気発症**: ${madnessResult.description}`;
@@ -691,7 +777,30 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
                 return;
             }
 
-            const actionText = `全員が「${reason}」による正気度チェックを行った。${anyMadness ? '一部のキャラクターに狂気が発症。' : ''}`;
+            // アイデア判定が必要なキャラクターがいる場合の処理
+            if (charactersNeedingIdeaCheck.length > 0) {
+                setMessages(prev => [...prev, { id: `sancheck-all-result-${Date.now()}`, content: message, sender: MessageSender.System }]);
+
+                // 最初のキャラクターのアイデア判定から開始
+                processIdeaCheckSequence(charactersNeedingIdeaCheck, 0, reason);
+                return;
+            }
+
+            // 狂気になったキャラクターの詳細を収集
+            const madnessDetails: string[] = [];
+            results.forEach(({ character, isSuccess }) => {
+                const actualLoss = isSuccess ? successLoss : failureLoss;
+                if (actualLoss > 0) {
+                    const madnessResult = checkForMadness(character, actualLoss);
+                    if (madnessResult.type) {
+                        const madnessType = madnessResult.type === 'temporary' ? '一時的狂気' : '不定の狂気';
+                        madnessDetails.push(`${character.name}:${madnessType}「${madnessResult.description}」`);
+                    }
+                }
+            });
+
+            const madnessInfo = madnessDetails.length > 0 ? `狂気発症：${madnessDetails.join('、')}。` : '';
+            const actionText = `全員が「${reason}」による正気度チェックを行った。${results.map(r => `${r.character.name}:${r.isSuccess ? '成功' : '失敗'}(SAN損失:${r.isSuccess ? successLoss : failureLoss})`).join('、')}。${madnessInfo}`;
             handleSystemAction(actionText, message);
         };
 
@@ -895,6 +1004,72 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
 
                     // 狂気判定
                     const madnessResult = checkForMadness(character, fixedSanLoss);
+
+                    // アイデア判定が必要かチェック
+                    if (madnessResult.needsIdeaCheck) {
+                        // まずSANチェック結果を表示
+                        const sanMessage = `🧠 **正気度チェック: ${reason} (${character.name})**\n- **判定:** ${sanRoll} ${comparisonSymbol} ${currentSan} → ${resultText}\n- **SAN損失:** ${fixedSanLoss} (${character.san.current} → ${newSan})\n- **一時的狂気の可能性あり** → アイデア判定が必要`;
+                        setMessages(prev => [...prev, { id: `sancheck-result-${Date.now()}`, content: sanMessage, sender: MessageSender.System }]);
+
+                        // キャラクターのSAN値を更新
+                        updateCharacterState(characterId, c => ({
+                            ...c,
+                            san: { ...c.san, current: newSan }
+                        }));
+
+                        // SAN値が0以下になった場合は即座にゲームオーバー
+                        if (newSan <= 0) {
+                            setMessages(prev => [...prev,
+                            { id: `gameover-san-${Date.now()}`, content: `### ゲームオーバー\n\n${character.name}の正気度が完全に失われた。もはや元の人格は存在しない...`, sender: MessageSender.System }
+                            ]);
+                            onGameOver();
+                            setIsLoading(false);
+                            setPendingAction(null);
+                            return;
+                        }
+
+                        // アイデア判定を実行
+                        const ideaValue = character.stats.INT * 5;
+                        setDiceRollRequest({
+                            notation: '1d100',
+                            reason: `アイデア判定 (一時的狂気チェック) - ${character.name}`,
+                            onComplete: (ideaRoll) => {
+                                setDiceRollRequest(null); // モーダルを閉じる
+
+                                const isIdeaSuccess = ideaRoll <= ideaValue;
+                                let finalMadnessResult: { type: 'temporary' | null; description: string; duration?: number } = { type: null, description: '' };
+                                let madnessMessage = '';
+
+                                if (isIdeaSuccess) {
+                                    finalMadnessResult = processTemporaryMadness();
+                                    madnessMessage = `\n- **一時的狂気発症**: ${finalMadnessResult.description}`;
+                                } else {
+                                    madnessMessage = '\n- **発狂しなかった**';
+                                }
+
+                                const ideaMessage = `🧠 **アイデア判定: ${character.name}**\n- **結果:** ${ideaRoll} ${isIdeaSuccess ? '≤' : '>'} ${ideaValue} → ${isIdeaSuccess ? '成功' : '失敗'}${madnessMessage}`;
+
+                                // キャラクターの狂気状態を更新
+                                if (finalMadnessResult.type) {
+                                    updateCharacterState(characterId, c => ({
+                                        ...c,
+                                        madness: {
+                                            type: finalMadnessResult.type!,
+                                            description: finalMadnessResult.description,
+                                            ...(finalMadnessResult.duration !== undefined ? { duration: finalMadnessResult.duration } : {})
+                                        }
+                                    }));
+                                }
+
+                                // SANチェック結果の詳細をAIに送信
+                                const actionText = `${character.name}が「${reason}」による正気度チェックを実行した。判定：${sanRoll}（目標値：${currentSan}）→${resultText}。SAN損失：${fixedSanLoss}。アイデア判定：${ideaRoll}（目標値：${ideaValue}）→${isIdeaSuccess ? '成功' : '失敗'}。${finalMadnessResult.type ? `一時的狂気「${finalMadnessResult.description}」が発症。` : '狂気は発症せず。'}`;
+                                handleSystemAction(actionText, ideaMessage);
+                            }
+                        });
+                        return;
+                    }
+
+                    // 通常の狂気判定（不定の狂気または狂気なし）
                     let madnessMessage = '';
                     if (madnessResult.type) {
                         const madnessTypeText = madnessResult.type === 'temporary' ? '一時的狂気' : '不定の狂気';
@@ -944,6 +1119,72 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
 
                             // 狂気判定
                             const madnessResult = checkForMadness(character, sanLoss);
+
+                            // アイデア判定が必要かチェック
+                            if (madnessResult.needsIdeaCheck) {
+                                // まずSANチェック結果を表示
+                                const sanMessage = `🧠 **正気度チェック: ${reason} (${character.name})**\n- **判定:** ${sanRoll} ${comparisonSymbol} ${currentSan} → ${resultText}\n- **SAN損失:** ${sanLoss} (${character.san.current} → ${newSan})\n- **一時的狂気の可能性あり** → アイデア判定が必要`;
+                                setMessages(prev => [...prev, { id: `sancheck-result-${Date.now()}`, content: sanMessage, sender: MessageSender.System }]);
+
+                                // キャラクターのSAN値を更新
+                                updateCharacterState(characterId, c => ({
+                                    ...c,
+                                    san: { ...c.san, current: newSan }
+                                }));
+
+                                // SAN値が0以下になった場合は即座にゲームオーバー
+                                if (newSan <= 0) {
+                                    setMessages(prev => [...prev,
+                                    { id: `gameover-san-${Date.now()}`, content: `### ゲームオーバー\n\n${character.name}の正気度が完全に失われた。もはや元の人格は存在しない...`, sender: MessageSender.System }
+                                    ]);
+                                    onGameOver();
+                                    setIsLoading(false);
+                                    setPendingAction(null);
+                                    return;
+                                }
+
+                                // アイデア判定を実行
+                                const ideaValue = character.stats.INT * 5;
+                                setDiceRollRequest({
+                                    notation: '1d100',
+                                    reason: `アイデア判定 (一時的狂気チェック) - ${character.name}`,
+                                    onComplete: (ideaRoll) => {
+                                        setDiceRollRequest(null); // モーダルを閉じる
+
+                                        const isIdeaSuccess = ideaRoll <= ideaValue;
+                                        let finalMadnessResult: { type: 'temporary' | null; description: string; duration?: number } = { type: null, description: '' };
+                                        let madnessMessage = '';
+
+                                        if (isIdeaSuccess) {
+                                            finalMadnessResult = processTemporaryMadness();
+                                            madnessMessage = `\n- **一時的狂気発症**: ${finalMadnessResult.description}`;
+                                        } else {
+                                            madnessMessage = '\n- **発狂しなかった**';
+                                        }
+
+                                        const ideaMessage = `🧠 **アイデア判定: ${character.name}**\n- **結果:** ${ideaRoll} ${isIdeaSuccess ? '≤' : '>'} ${ideaValue} → ${isIdeaSuccess ? '成功' : '失敗'}${madnessMessage}`;
+
+                                        // キャラクターの狂気状態を更新
+                                        if (finalMadnessResult.type) {
+                                            updateCharacterState(characterId, c => ({
+                                                ...c,
+                                                madness: {
+                                                    type: finalMadnessResult.type!,
+                                                    description: finalMadnessResult.description,
+                                                    ...(finalMadnessResult.duration !== undefined ? { duration: finalMadnessResult.duration } : {})
+                                                }
+                                            }));
+                                        }
+
+                                        // SANチェック結果の詳細をAIに送信
+                                        const actionText = `${character.name}が「${reason}」による正気度チェックを実行した。判定：${sanRoll}（目標値：${currentSan}）→${resultText}。SAN損失：${sanLoss}。アイデア判定：${ideaRoll}（目標値：${ideaValue}）→${isIdeaSuccess ? '成功' : '失敗'}。${finalMadnessResult.type ? `一時的狂気「${finalMadnessResult.description}」が発症。` : '狂気は発症せず。'}`;
+                                        handleSystemAction(actionText, ideaMessage);
+                                    }
+                                });
+                                return;
+                            }
+
+                            // 通常の狂気判定（不定の狂気または狂気なし）
                             let madnessMessage = '';
                             if (madnessResult.type) {
                                 const madnessTypeText = madnessResult.type === 'temporary' ? '一時的狂気' : '不定の狂気';
