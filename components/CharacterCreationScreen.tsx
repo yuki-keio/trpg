@@ -21,10 +21,12 @@ const createNewCharacter = (): Character => {
         description: '',
         iconUrl: '',
         stats: defaultRawStats,
+        statGrowth: {},
         hp: { current: 10, max: 10 },
         mp: { current: 10, max: 10 },
         san: { current: 50, max: 50 },
         skills: {},
+        skillGrowth: {},
         customOccupationalSkills: [],
         customSkills: [],
         weapons: [],
@@ -97,15 +99,68 @@ const parseIacharaText = (text: string): { character: Character; allocations: Ch
     const iconInfo = getSection('アイコン', text);
     newChar.iconUrl = iconInfo.match(/https?:\/\/[^\s]+/)?.[0] || '';
 
-    // 3. Stats
+    // 3. Stats (with growth tracking)
     const statsInfo = getSection('能力値', text);
-    const statRegex = /^(STR|CON|POW|DEX|APP|SIZ|INT|EDU)\s+\d+\s+(\d+)/gm;
+    newChar.statGrowth = {};
+
+    // Parse basic stats
+    const statRegex = /^(STR|CON|POW|DEX|APP|SIZ|INT|EDU)\s+\d+\s+(\d+)\s+(\d+)/gm;
     let match;
     while ((match = statRegex.exec(statsInfo)) !== null) {
         const statName = match[1] as keyof Character['stats'];
         const statValue = parseInt(match[2], 10);
+        const growthValue = parseInt(match[3], 10) || 0;
         (newChar.stats as any)[statName] = statValue;
+        if (growthValue > 0) {
+            (newChar.statGrowth as any)[statName] = growthValue;
+        }
         rawStats[statName] = statValue;
+    }
+
+    // Parse HP with growth
+    const hpRegex = /HP\s+(\d+)\s+(\d+)\s+(\d+)/;
+    const hpMatch = hpRegex.exec(statsInfo);
+    if (hpMatch) {
+        const currentHp = parseInt(hpMatch[1], 10);
+        const maxHp = parseInt(hpMatch[2], 10);
+        const hpGrowth = parseInt(hpMatch[3], 10) || 0;
+        newChar.hp = { current: currentHp, max: maxHp, growth: hpGrowth > 0 ? hpGrowth : undefined };
+    } else {
+        const hp = Math.ceil(((rawStats.CON ?? 0) + (rawStats.SIZ ?? 0)) / 2);
+        newChar.hp = { max: hp, current: hp };
+    }
+
+    // Parse MP with growth
+    const mpRegex = /MP\s+(\d+)\s+(\d+)\s+(\d+)/;
+    const mpMatch = mpRegex.exec(statsInfo);
+    if (mpMatch) {
+        const currentMp = parseInt(mpMatch[1], 10);
+        const maxMp = parseInt(mpMatch[2], 10);
+        const mpGrowth = parseInt(mpMatch[3], 10) || 0;
+        newChar.mp = { current: currentMp, max: maxMp, growth: mpGrowth > 0 ? mpGrowth : undefined };
+    } else {
+        const pow = rawStats.POW ?? 0;
+        newChar.mp = { max: pow, current: pow };
+    }
+
+    // Parse SAN with growth
+    const sanRegex = /SAN\s+(\d+)\s+(\d+)\s+(\d+)/;
+    const sanMatch = sanRegex.exec(statsInfo);
+    if (sanMatch) {
+        const currentSan = parseInt(sanMatch[1], 10);
+        const maxSan = parseInt(sanMatch[2], 10);
+        const sanGrowth = parseInt(sanMatch[3], 10) || 0;
+        newChar.san = { current: currentSan, max: maxSan, growth: sanGrowth > 0 ? sanGrowth : undefined };
+    } else {
+        const pow = rawStats.POW ?? 0;
+        const sanMax = pow * 5;
+        newChar.san.max = sanMax;
+        let currentSan = sanMax;
+        const sanCurrentMatch = statsInfo.match(/現在SAN値\s*(\d+)/);
+        if (sanCurrentMatch) {
+            currentSan = parseInt(sanCurrentMatch[1], 10);
+        }
+        newChar.san.current = Math.min(currentSan, sanMax);
     }
 
     // 4. Skills (Parse this first to get allocations)
@@ -175,25 +230,28 @@ const parseIacharaText = (text: string): { character: Character; allocations: Ch
     }
 
 
-    // 5. Finalize stat-derived values (HP, MP, SAN)
-    const hp = Math.ceil(((rawStats.CON ?? 0) + (rawStats.SIZ ?? 0)) / 2);
-    newChar.hp = { max: hp, current: hp };
-    const hpMatch = statsInfo.match(/HP\s+(\d+)/);
-    if (hpMatch) newChar.hp.current = parseInt(hpMatch[1], 10);
+    // 5. Parse skill growth information
+    newChar.skillGrowth = {};
+    const skillGrowthLines = skillsInfo.split('\n');
+    for (const line of skillGrowthLines) {
+        // 技能行のパターン: 技能名 合計 初期値 職業P 興味P 成長分 その他
+        const parts = line.trim().split(/\s+/).filter(Boolean);
+        if (parts.length < 7) continue;
 
-    const pow = rawStats.POW ?? 0;
-    newChar.mp = { max: pow, current: pow };
-    const mpMatch = statsInfo.match(/MP\s+(\d+)/);
-    if (mpMatch) newChar.mp.current = parseInt(mpMatch[1], 10);
+        const numericParts = parts.slice(-6);
+        if (numericParts.some(p => isNaN(parseInt(p, 10)))) continue;
 
-    const sanMax = pow * 5;
-    newChar.san.max = sanMax;
-    let currentSan = sanMax;
-    const sanMatch = statsInfo.match(/現在SAN値\s*(\d+)/) ?? statsInfo.match(/SAN\s+(\d+)/);
-    if (sanMatch) {
-        currentSan = parseInt(sanMatch[1], 10);
+        const nameParts = parts.slice(0, -6);
+        if (nameParts.length === 0) continue;
+
+        const rawName = nameParts.join(' ');
+        const skillName = rawName.split(/[(（]/)[0].trim();
+        const growthValue = parseInt(numericParts[4], 10) || 0; // 成長分は5番目の数値
+
+        if (growthValue > 0) {
+            newChar.skillGrowth[skillName] = growthValue;
+        }
     }
-    newChar.san.current = Math.min(currentSan, sanMax);
 
     // 6. Finalize skill totals
     const allSkillNames = [...ALL_SKILLS, ...customSkills.map(cs => cs.name)];
@@ -1181,6 +1239,7 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
                                 <div className="bg-gray-900/40 p-3 rounded-lg">
                                     <div className="flex border-b border-purple-500/20 mb-3">
                                         <button onClick={() => setActiveTab('skills')} className={`px-4 py-2 font-semibold ${activeTab === 'skills' ? 'border-b-2 border-purple-400 text-purple-300' : 'text-gray-400'}`}>技能</button>
+                                        <button onClick={() => setActiveTab('growth')} className={`px-4 py-2 font-semibold ${activeTab === 'growth' ? 'border-b-2 border-purple-400 text-purple-300' : 'text-gray-400'}`}>成長分</button>
                                         <button onClick={() => setActiveTab('equipment')} className={`px-4 py-2 font-semibold ${activeTab === 'equipment' ? 'border-b-2 border-purple-400 text-purple-300' : 'text-gray-400'}`}>装備</button>
                                         <button onClick={() => setActiveTab('background')} className={`px-4 py-2 font-semibold ${activeTab === 'background' ? 'border-b-2 border-purple-400 text-purple-300' : 'text-gray-400'}`}>背景</button>
                                     </div>
@@ -1306,6 +1365,137 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
                                                     </details>
                                                 );
                                             })}
+                                        </div>
+                                    )}
+
+                                    {activeTab === 'growth' && (
+                                        <div className="max-h-[60vh] overflow-y-auto pr-2">
+                                            <h4 className="font-bold text-purple-300 mb-4 flex items-center">
+                                                <Sparkles size={18} className="mr-2" />
+                                                能力・技能の成長分
+                                            </h4>
+
+                                            {/* 能力値成長分 */}
+                                            <div className="bg-gray-800/50 rounded-lg p-4 mb-4">
+                                                <h5 className="font-bold text-green-400 mb-3">能力値成長分</h5>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    {Object.entries(activeCharacter.stats).map(([statName, statValue]) => {
+                                                        const growthValue = activeCharacter.statGrowth?.[statName as keyof Character['stats']] || 0;
+                                                        return (
+                                                            <div key={statName} className="flex items-center justify-between text-sm">
+                                                                <span className="font-semibold">{statName}</span>
+                                                                <div className="flex items-center">
+                                                                    <span className="text-gray-400 mr-2">{statValue}</span>
+                                                                    <span className="text-green-400 mr-2">+</span>
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        max="99"
+                                                                        value={growthValue}
+                                                                        onChange={(e) => {
+                                                                            const newGrowth = parseInt(e.target.value) || 0;
+                                                                            updateCharacter(activeCharacter.id, (char) => ({
+                                                                                statGrowth: {
+                                                                                    ...char.statGrowth,
+                                                                                    [statName]: newGrowth
+                                                                                }
+                                                                            }));
+                                                                        }}
+                                                                        className="w-16 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-center text-xs focus:border-purple-400 focus:outline-none"
+                                                                    />
+                                                                    <span className="text-purple-300 ml-2 font-bold">
+                                                                        = {statValue + growthValue}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+
+                                            {/* HP/MP/SAN成長分 */}
+                                            <div className="bg-gray-800/50 rounded-lg p-4 mb-4">
+                                                <h5 className="font-bold text-green-400 mb-3">HP/MP/SAN成長分</h5>
+                                                <div className="space-y-3">
+                                                    {[
+                                                        { key: 'hp', label: 'HP', color: 'text-red-400' },
+                                                        { key: 'mp', label: 'MP', color: 'text-blue-400' },
+                                                        { key: 'san', label: 'SAN', color: 'text-yellow-400' }
+                                                    ].map(({ key, label, color }) => {
+                                                        const baseValue = activeCharacter[key as keyof Pick<Character, 'hp' | 'mp' | 'san'>].max;
+                                                        const growthValue = activeCharacter[key as keyof Pick<Character, 'hp' | 'mp' | 'san'>].growth || 0;
+                                                        return (
+                                                            <div key={key} className="flex items-center justify-between text-sm">
+                                                                <span className={`font-semibold ${color}`}>{label}</span>
+                                                                <div className="flex items-center">
+                                                                    <span className="text-gray-400 mr-2">{baseValue}</span>
+                                                                    <span className="text-green-400 mr-2">+</span>
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        value={growthValue}
+                                                                        onChange={(e) => {
+                                                                            const newGrowth = parseInt(e.target.value) || 0;
+                                                                            updateCharacter(activeCharacter.id, (char) => ({
+                                                                                [key]: {
+                                                                                    ...char[key as keyof Pick<Character, 'hp' | 'mp' | 'san'>],
+                                                                                    growth: newGrowth
+                                                                                }
+                                                                            }));
+                                                                        }}
+                                                                        className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-center text-xs focus:border-purple-400 focus:outline-none"
+                                                                    />
+                                                                    <span className={`ml-2 font-bold ${color}`}>
+                                                                        = {baseValue + growthValue}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+
+                                            {/* 技能成長分 */}
+                                            <div className="bg-gray-800/50 rounded-lg p-4">
+                                                <h5 className="font-bold text-green-400 mb-3">技能成長分</h5>
+                                                <div className="max-h-64 overflow-y-auto">
+                                                    {[...ALL_SKILLS, ...(activeCharacter.customSkills?.map(cs => cs.name) || [])]
+                                                        .filter(skillName => activeCharacter.skills[skillName] > 0 || (activeCharacter.skillGrowth?.[skillName] || 0) > 0)
+                                                        .sort((a, b) => a.localeCompare(b, 'ja'))
+                                                        .map(skillName => {
+                                                            const baseValue = activeCharacter.skills[skillName] || 0;
+                                                            const growthValue = activeCharacter.skillGrowth?.[skillName] || 0;
+                                                            return (
+                                                                <div key={skillName} className="flex items-center justify-between text-sm py-1 border-b border-gray-700/50 last:border-b-0">
+                                                                    <span className="font-semibold">〈{skillName}〉</span>
+                                                                    <div className="flex items-center">
+                                                                        <span className="text-gray-400 mr-2">{baseValue}</span>
+                                                                        <span className="text-green-400 mr-2">+</span>
+                                                                        <input
+                                                                            type="number"
+                                                                            min="0"
+                                                                            max="99"
+                                                                            value={growthValue}
+                                                                            onChange={(e) => {
+                                                                                const newGrowth = parseInt(e.target.value) || 0;
+                                                                                updateCharacter(activeCharacter.id, (char) => ({
+                                                                                    skillGrowth: {
+                                                                                        ...char.skillGrowth,
+                                                                                        [skillName]: newGrowth
+                                                                                    }
+                                                                                }));
+                                                                            }}
+                                                                            className="w-16 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-center text-xs focus:border-purple-400 focus:outline-none"
+                                                                        />
+                                                                        <span className="text-purple-300 ml-2 font-bold">
+                                                                            = {Math.min(99, baseValue + growthValue)}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
 

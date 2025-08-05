@@ -21,10 +21,15 @@ const StatBar: React.FC<{ value: number; max: number; label: string; icon: React
     );
 };
 
-const SkillItem: React.FC<{ name: string; value: number }> = ({ name, value }) => (
+const SkillItem: React.FC<{ name: string; value: number; growth?: number }> = ({ name, value, growth }) => (
     <div className="flex justify-between items-center text-sm py-1 border-b border-gray-700/50">
         <span>〈{name}〉</span>
-        <span className="font-bold font-crimson">{value}</span>
+        <span className="font-bold font-crimson">
+            {value}
+            {growth && growth > 0 && (
+                <span className="text-green-400 text-xs ml-1">(+{growth})</span>
+            )}
+        </span>
     </div>
 );
 
@@ -45,8 +50,25 @@ const CharacterDetails: React.FC<{ character: Character }> = ({ character }) => 
 
             <div className="bg-gray-800/50 rounded-lg p-4 mb-4">
                 <StatBar label="HP" value={character.hp.current} max={character.hp.max} icon={<HeartPulse size={16} />} color="bg-red-600" />
+                {character.hp.growth && character.hp.growth > 0 && (
+                    <div className="text-xs text-green-400 font-bold ml-6 -mt-2 mb-2">
+                        成長分: +{character.hp.growth}
+                    </div>
+                )}
+
                 <StatBar label="MP" value={character.mp.current} max={character.mp.max} icon={<BookOpen size={16} />} color="bg-green-500" />
+                {character.mp.growth && character.mp.growth > 0 && (
+                    <div className="text-xs text-green-400 font-bold ml-6 -mt-2 mb-2">
+                        成長分: +{character.mp.growth}
+                    </div>
+                )}
+
                 <StatBar label="SAN" value={character.san.current} max={character.san.max} icon={<BrainCircuit size={16} />} color="bg-blue-500" />
+                {character.san.growth && character.san.growth > 0 && (
+                    <div className="text-xs text-green-400 font-bold ml-6 -mt-2 mb-2">
+                        成長分: +{character.san.growth}
+                    </div>
+                )}
 
                 {character.madness?.type && (
                     <div className="mt-3 p-3 bg-red-900/30 border border-red-700/50 rounded-lg">
@@ -86,12 +108,20 @@ const CharacterDetails: React.FC<{ character: Character }> = ({ character }) => 
             <div className="bg-gray-800/50 rounded-lg p-4 mb-4">
                 <h3 className="text-lg font-bold mb-2 font-crimson text-purple-300">能力値</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-sm">
-                    {Object.entries(character.stats).map(([key, value]) => (
-                        <div key={key} className="flex justify-between">
-                            <span className="font-bold">{key}</span>
-                            <span className="font-crimson">{value}</span>
-                        </div>
-                    ))}
+                    {Object.entries(character.stats).map(([key, value]) => {
+                        const growthValue = character.statGrowth?.[key as keyof Character['stats']];
+                        return (
+                            <div key={key} className="flex justify-between">
+                                <span className="font-bold">{key}</span>
+                                <span className="font-crimson">
+                                    {value}
+                                    {growthValue && growthValue > 0 && (
+                                        <span className="text-green-400 text-xs ml-1">(+{growthValue})</span>
+                                    )}
+                                </span>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
 
@@ -134,9 +164,12 @@ const CharacterDetails: React.FC<{ character: Character }> = ({ character }) => 
                     {Object.entries(character.skills)
                         .filter(([, value]) => value > 0)
                         .sort(([a], [b]) => a.localeCompare(b, 'ja'))
-                        .map(([skill, value]) => (
-                            <SkillItem key={skill} name={skill} value={value} />
-                        ))}
+                        .map(([skill, value]) => {
+                            const growth = character.skillGrowth?.[skill] || 0;
+                            return (
+                                <SkillItem key={skill} name={skill} value={value} growth={growth} />
+                            );
+                        })}
                 </div>
             </div>
         </div>

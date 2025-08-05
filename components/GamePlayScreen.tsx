@@ -32,6 +32,20 @@ const INDEFINITE_MADNESS_SYMPTOMS = [
     "幻聴・幻覚：存在しない声や映像を知覚する"
 ];
 
+// 技能値を成長分も含めて取得する関数
+const getEffectiveSkillValue = (character: Character, skillName: string): number => {
+    const baseValue = character.skills[skillName] ?? 0;
+    const growthValue = character.skillGrowth?.[skillName] ?? 0;
+    return baseValue + growthValue;
+};
+
+// 能力値を成長分も含めて取得する関数  
+const getEffectiveStatValue = (character: Character, statName: keyof Character['stats']): number => {
+    const baseValue = character.stats[statName] ?? 0;
+    const growthValue = character.statGrowth?.[statName] ?? 0;
+    return baseValue + growthValue;
+};
+
 // 技能名をクリーンアップする関数
 const cleanSkillName = (skill: string): string => {
     // 複数の技能や探索者名が含まれている場合の処理
@@ -457,7 +471,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
 
         const character = characters.find(c => c.id === characterId)!;
         const cleanedSkill = cleanSkillName(skill);
-        const baseSkillValue = character.skills[cleanedSkill] ?? 0;
+        const baseSkillValue = getEffectiveSkillValue(character, cleanedSkill);
 
         // 狂気によるペナルティを適用
         const madnessPenalty = getMadnessPenalty(character, 'skill');
@@ -520,7 +534,7 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
             return;
         }
 
-        const statValue = character.stats[normalizedStat] ?? 0;
+        const statValue = getEffectiveStatValue(character, normalizedStat);
 
         // デバッグログ
         console.log(`Stat check: original="${stat}", normalized="${normalizedStat}", value=${statValue}, character stats:`, character.stats);

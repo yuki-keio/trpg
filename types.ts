@@ -43,10 +43,22 @@ export interface Character {
     INT: number; // 知性
     EDU: number; // 教育
   };
-  hp: { current: number; max: number };
-  mp: { current: number; max: number };
-  san: { current: number; max: number };
+  // 成長分を追加
+  statGrowth?: {
+    STR?: number;
+    CON?: number;
+    POW?: number;
+    DEX?: number;
+    APP?: number;
+    SIZ?: number;
+    INT?: number;
+    EDU?: number;
+  };
+  hp: { current: number; max: number; growth?: number };
+  mp: { current: number; max: number; growth?: number };
+  san: { current: number; max: number; growth?: number };
   skills: { [key: string]: number };
+  skillGrowth?: { [key: string]: number }; // 技能成長分
   customOccupationalSkills?: string[];
   customSkills?: CustomSkill[]; // 独自技能
   weapons: Weapon[];

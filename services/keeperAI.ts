@@ -7,6 +7,76 @@ if (!process.env.API_KEY) {
   throw new Error("API_KEY environment variable not set");
 }
 
+// リトライ設定
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  baseDelay: 1000, // 1秒
+  maxDelay: 10000, // 10秒
+  backoffMultiplier: 2
+};
+
+// APIエラーの種類を判定
+const isRetryableError = (error: any): boolean => {
+  // 503 (Service Unavailable), 429 (Too Many Requests), 502 (Bad Gateway), 504 (Gateway Timeout)
+  const retryableStatusCodes = [429, 502, 503, 504];
+
+  if (error?.status && retryableStatusCodes.includes(error.status)) {
+    return true;
+  }
+
+  // エラーメッセージでも判定
+  const errorMessage = error?.message?.toLowerCase() || '';
+  const retryableMessages = [
+    'overloaded',
+    'rate limit',
+    'quota exceeded',
+    'timeout',
+    'temporarily unavailable',
+    'server error'
+  ];
+
+  return retryableMessages.some(msg => errorMessage.includes(msg));
+};
+
+// 指数バックオフでの遅延
+const delay = (ms: number): Promise<void> => {
+  return new Promise(resolve => setTimeout(resolve, ms));
+};
+
+// リトライ機能付きAPI呼び出し
+const withRetry = async <T>(
+  operation: () => Promise<T>,
+  context: string = 'API call'
+): Promise<T> => {
+  let lastError: any;
+
+  for (let attempt = 1; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    try {
+      console.log(`[${context}] Attempt ${attempt}/${RETRY_CONFIG.maxRetries}`);
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      console.error(`[${context}] Attempt ${attempt} failed:`, error);
+
+      // 最後の試行で失敗した場合、またはリトライ不可能なエラーの場合
+      if (attempt === RETRY_CONFIG.maxRetries || !isRetryableError(error)) {
+        throw error;
+      }
+
+      // 遅延時間を計算（指数バックオフ）
+      const delayMs = Math.min(
+        RETRY_CONFIG.baseDelay * Math.pow(RETRY_CONFIG.backoffMultiplier, attempt - 1),
+        RETRY_CONFIG.maxDelay
+      );
+
+      console.log(`[${context}] Retrying in ${delayMs}ms...`);
+      await delay(delayMs);
+    }
+  }
+
+  throw lastError;
+};
+
 const ai = new GoogleGenAI({
   apiKey: process.env.API_KEY!
 });
@@ -187,26 +257,28 @@ export const generateScenarioOutline = async (
     ### 参加する探索者
     ${characterInfos}
 
-    上記の探索者の特徴を少しだけシナリオに反映させてください。
-    ${optionsText ? `\n以下の要望を考慮してシナリオを生成してください。\n${optionsText}` : '\nプレイヤーたち（探索者たち）を恐怖と狂気の世界へと誘う、魅力的でサスペンスに満ちたクトゥルフ神話のシナリオを紡ぎます。舞台は1920年代のアメリカ、マサチューセッツ州の架空の都市「アーカム」から始まります。その他の内容は完全にあなた（AI）に任せます。'}
+    上記の探索者の特徴を踏まえて適切なシナリオを作成してください。
+    
+    ${optionsText ? `\n以下の要望を考慮してシナリオを作成してください。\n${optionsText}` : '\nプレイヤーたち（探索者たち）を恐怖と狂気の世界へと誘う、魅力的でサスペンスに満ちたクトゥルフ神話のシナリオを紡ぎます。舞台は1920年代のアメリカ、マサチューセッツ州の架空の都市「アーカム」から始まります。その他の内容は完全にあなた（AI）に任せます。'}
 
     必ず指示されたJSON形式で、日本語で出力してください。
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: scenarioOutlineSchema
-      }
-    });
-    const jsonText = response.text?.trim().replace(/^```json\s*|```$/g, '') || '';
-    const parsed = JSON.parse(jsonText);
-    return parsed as ScenarioOutline;
+    return await withRetry(async () => {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: scenarioOutlineSchema
+        }
+      });
+      const jsonText = response.text?.trim().replace(/^```json\s*|```$/g, '') || '';
+      return JSON.parse(jsonText) as ScenarioOutline;
+    }, 'Scenario generation');
   } catch (error) {
-    console.error("AI scenario outline generation failed:", error);
+    console.error("AI scenario outline generation failed after retries:", error);
     // Fallback scenario
     return {
       title: "古い屋敷の謎",
@@ -217,9 +289,7 @@ export const generateScenarioOutline = async (
       estimatedPlayTime: "3〜4時間"
     };
   }
-};
-
-export const startNewGame = async (chat: Chat, characters: Character[], scenario: ScenarioOutline): Promise<KeeperResponse> => {
+}; export const startNewGame = async (chat: Chat, characters: Character[], scenario: ScenarioOutline): Promise<KeeperResponse> => {
   const characterInfos = characters.map(formatCharacterInfo).join('\n\n');
 
   const prompt = `
@@ -243,8 +313,10 @@ export const startNewGame = async (chat: Chat, characters: Character[], scenario
     ${characterInfos}
   `;
 
-  const response = await chat.sendMessage({ message: prompt });
-  return parseResponse(response);
+  return await withRetry(async () => {
+    const response = await chat.sendMessage({ message: prompt });
+    return parseResponse(response);
+  }, 'Game start');
 };
 
 export const sendPlayerAction = async (
@@ -262,7 +334,7 @@ export const sendPlayerAction = async (
       - 技能: ${rollResult.skill}（技能値: ${rollResult.value}）
       - ダイス結果: ${rollResult.dice}
       - 判定: ${rollResult.result}
-      \nこの判定結果を反映して、物語を続けてください。
+      \nこの判定結果を反映して、その後の物語を続けてください。
     `;
   }
 
@@ -300,8 +372,11 @@ export const sendPlayerAction = async (
     
     この行動と現在の状態に基づき、物語の次のステップを描写し、新たな行動の選択肢を提示してください。
   `
-  const response = await chat.sendMessage({ message: prompt });
-  return parseResponse(response);
+
+  return await withRetry(async () => {
+    const response = await chat.sendMessage({ message: prompt });
+    return parseResponse(response);
+  }, 'Player action');
 };
 
 export const generateCharacterBackground = async (name: string, occupation: string): Promise<string> => {
@@ -315,30 +390,32 @@ export const generateCharacterBackground = async (name: string, occupation: stri
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            background: {
-              type: Type.STRING,
-              description: "生成されたキャラクターの背景設定。"
-            }
-          },
-          required: ["background"]
+    return await withRetry(async () => {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              background: {
+                type: Type.STRING,
+                description: "生成されたキャラクターの背景設定。"
+              }
+            },
+            required: ["background"]
+          }
         }
-      }
-    });
+      });
 
-    const jsonText = response.text?.trim().replace(/^```json\s*|```$/g, '') || '';
-    const parsed = JSON.parse(jsonText);
-    return parsed.background;
+      const jsonText = response.text?.trim().replace(/^```json\s*|```$/g, '') || '';
+      const parsed = JSON.parse(jsonText);
+      return parsed.background;
+    }, 'Character background generation');
 
   } catch (error) {
-    console.error("AI background generation failed:", error);
-    return "予期せぬエラーにより、背景を生成できませんでした。";
+    console.error("AI background generation failed after retries:", error);
+    return "予期せぬエラーにより、背景を生成できませんでした。しばらく時間をおいてから再度お試しください。";
   }
 };
