@@ -92,6 +92,7 @@ const parseResponse = (response: GenerateContentResponse): KeeperResponse => {
     const text = response.text?.trim() || '';
     // Potentially remove markdown backticks
     const cleanedText = text.replace(/^```json\s*|```$/g, '');
+    console.log("Raw AI response:", cleanedText);
     const parsed = JSON.parse(cleanedText);
     return parsed as KeeperResponse;
   } catch (error) {
