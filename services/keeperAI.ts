@@ -72,8 +72,8 @@ const modelConfig = {
           items: {
             type: Type.OBJECT,
             properties: {
-              name: { type: Type.STRING, description: "報酬アイテムや情報の名前。" },
-              effect: { type: Type.STRING, description: "報酬アイテムや情報の効果、詳細な説明。" }
+              name: { type: Type.STRING, description: "報酬アイテムや情報の魅力的な名前。" },
+              effect: { type: Type.STRING, description: "報酬アイテムや情報の具体的な効果、詳細な説明（武器なら射程・ダメージなど）。ゲームバランスの維持に配慮すること。" }
             },
             required: ["name", "effect"]
           },

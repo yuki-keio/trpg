@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import type { Character, Weapon, Armor } from '../types';
+import type { Character, Weapon, Armor, CustomSkill } from '../types';
 import { INITIAL_SKILLS, OCCUPATIONS, SKILL_CATEGORIES, DYNAMIC_BASE_SKILLS, ALL_SKILLS } from '../constants';
 import { UserPlus, Trash2, Users, UploadCloud, X, User, Sword, Shield, Pencil, PlusCircle, BrainCircuit, Dices, Info, ChevronsUpDown, RotateCcw, Sparkles } from 'lucide-react';
 import { parseAndRoll } from '../utils/dice';
@@ -26,6 +26,7 @@ const createNewCharacter = (): Character => {
         san: { current: 50, max: 50 },
         skills: {},
         customOccupationalSkills: [],
+        customSkills: [],
         weapons: [],
         armor: [],
         madness: { type: null, description: '', duration: 0 },
@@ -44,11 +45,18 @@ const calculateDamageBonus = (str: number, siz: number): string => {
     return "+4D6";
 };
 
-const getBaseSkillValue = (skillName: string, stats: Character['stats']): number => {
+const getBaseSkillValue = (skillName: string, stats: Character['stats'], customSkills: CustomSkill[] = []): number => {
     const dynamicCalc = DYNAMIC_BASE_SKILLS[skillName as keyof typeof DYNAMIC_BASE_SKILLS];
     if (dynamicCalc) {
         return dynamicCalc(stats);
     }
+    
+    // 独自技能をチェック
+    const customSkill = customSkills.find(skill => skill.name === skillName);
+    if (customSkill) {
+        return customSkill.baseValue;
+    }
+    
     return INITIAL_SKILLS[skillName] ?? 0;
 };
 
@@ -107,7 +115,19 @@ const parseIacharaText = (text: string): { character: Character; allocations: Ch
     }
 
     const skillLines = skillsInfo.split('\n');
+    const customSkills: CustomSkill[] = [];
+    
+    // 現在のカテゴリを追跡
+    let currentCategory = '知識技能'; // デフォルト
+    
     for (const line of skillLines) {
+        // カテゴリ見出しをチェック
+        const categoryMatch = line.match(/『(.+?)技能』/);
+        if (categoryMatch) {
+            currentCategory = categoryMatch[1] + '技能';
+            continue;
+        }
+        
         // Quick filter for lines that are likely not skill entries (e.g., headers)
         if (!/\d/.test(line)) continue;
 
@@ -128,11 +148,24 @@ const parseIacharaText = (text: string): { character: Character; allocations: Ch
         // 職業P is the 3rd value (index 2), 興味P is the 4th (index 3)
         const occP = parseInt(numericParts[2], 10) || 0;
         const intP = parseInt(numericParts[3], 10) || 0;
+        const initialValue = parseInt(numericParts[0], 10) || 0; // 初期値
 
         if (ALL_SKILLS.includes(skillName)) {
             newAllocations[skillName] = { occ: occP, int: intP };
+        } else {
+            // 独自技能として追加（現在のセクションのカテゴリを使用）
+            const customSkill: CustomSkill = {
+                id: `custom_${skillName.replace(/\s/g, '')}_${Date.now()}`,
+                name: skillName,
+                baseValue: initialValue - occP - intP, // 初期値からポイント分を引いたベース値
+                category: currentCategory
+            };
+            customSkills.push(customSkill);
+            newAllocations[skillName] = { occ: occP, int: intP };
         }
     }
+    
+    newChar.customSkills = customSkills;
 
     const isPresetOccupation = Object.keys(OCCUPATIONS).includes(newChar.occupation);
     if (!isPresetOccupation && newChar.occupation) {
@@ -163,8 +196,9 @@ const parseIacharaText = (text: string): { character: Character; allocations: Ch
     newChar.san.current = Math.min(currentSan, sanMax);
 
     // 6. Finalize skill totals
-    for (const skillName of ALL_SKILLS) {
-        const baseValue = getBaseSkillValue(skillName, newChar.stats);
+    const allSkillNames = [...ALL_SKILLS, ...customSkills.map(cs => cs.name)];
+    for (const skillName of allSkillNames) {
+        const baseValue = getBaseSkillValue(skillName, newChar.stats, customSkills);
         const alloc = newAllocations[skillName] || { occ: 0, int: 0 };
         const total = baseValue + alloc.occ + alloc.int;
         newChar.skills[skillName] = total > 99 ? 99 : total;
@@ -251,7 +285,7 @@ const parseIacharaText = (text: string): { character: Character; allocations: Ch
         const itemLines = combatSectionLines.slice(combatSectionLines.indexOf(headerLine) + 1).filter(line => line.trim() && !line.includes('─'));
 
         for (const line of itemLines) {
-            const [name, successRate, damage, range, attacks, ammo, durability, notes] = sliceByDisplayWidth(line, boundary);
+            const [name, , damage, range, attacks, ammo, durability, notes] = sliceByDisplayWidth(line, boundary);
 
             if (!name) continue;
 
@@ -467,6 +501,8 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
     const characterFileInputRef = useRef<HTMLInputElement>(null);
     const imageUploadRef = useRef<HTMLInputElement>(null);
     const [modalConfig, setModalConfig] = useState<{ isOpen: boolean; type: 'weapon' | 'armor' | null; itemToEdit: Weapon | Armor | null; }>({ isOpen: false, type: null, itemToEdit: null });
+    const [customSkillModalOpen, setCustomSkillModalOpen] = useState(false);
+    const [editingCustomSkill, setEditingCustomSkill] = useState<CustomSkill | null>(null);
     const [activeTab, setActiveTab] = useState('skills');
     const [isCustomOccupation, setIsCustomOccupation] = useState(false);
     const [isGeneratingBackground, setIsGeneratingBackground] = useState(false);
@@ -516,9 +552,11 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
         setCharacters(prev => [...prev, newChar]);
         setActiveCharacterId(newChar.id);
         const newAllocs: CharacterAllocations = {};
+        // 標準技能のアロケーション初期化
         for (const skill of ALL_SKILLS) {
             newAllocs[skill] = { occ: 0, int: 0 };
         }
+        // 独自技能のアロケーション初期化（必要に応じて後で追加）
         setAllocations(prev => ({ ...prev, [newChar.id]: newAllocs }));
     }, []);
 
@@ -621,8 +659,9 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
             const newSkills = { ...char.skills };
             // Recalculate dynamic base skills and totals if DEX or EDU changed
             if (statName === 'DEX' || statName === 'EDU') {
-                for (const skillName of ALL_SKILLS) {
-                    const base = getBaseSkillValue(skillName, newStats);
+                const allSkillNames = [...ALL_SKILLS, ...(char.customSkills || []).map(cs => cs.name)];
+                for (const skillName of allSkillNames) {
+                    const base = getBaseSkillValue(skillName, newStats, char.customSkills || []);
                     const alloc = allocations[id]?.[skillName] || { occ: 0, int: 0 };
                     newSkills[skillName] = base + alloc.occ + alloc.int;
                 }
@@ -661,8 +700,9 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
 
             const newSkills = { ...char.skills };
             // After all stats are updated, recalculate all skills
-            for (const skillName of ALL_SKILLS) {
-                const base = getBaseSkillValue(skillName, newStats);
+            const allSkillNames = [...ALL_SKILLS, ...(char.customSkills || []).map(cs => cs.name)];
+            for (const skillName of allSkillNames) {
+                const base = getBaseSkillValue(skillName, newStats, char.customSkills || []);
                 const alloc = allocations[char.id]?.[skillName] || { occ: 0, int: 0 };
                 const total = base + alloc.occ + alloc.int;
                 newSkills[skillName] = total > 99 ? 99 : total;
@@ -688,7 +728,7 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
         setAllocations(prev => ({ ...prev, [charId]: newAllocs }));
 
         updateCharacter(charId, char => {
-            const base = getBaseSkillValue(skillName, char.stats);
+            const base = getBaseSkillValue(skillName, char.stats, char.customSkills || []);
             const newSkillValue = base + newAllocs[skillName].occ + newAllocs[skillName].int;
             return { skills: { ...char.skills, [skillName]: newSkillValue } };
         });
@@ -723,6 +763,86 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
         });
     };
 
+    // 独自技能の追加
+    const handleAddCustomSkill = (skillData: Omit<CustomSkill, 'id'>) => {
+        if (!activeCharacter) return;
+
+        const newSkill: CustomSkill = {
+            ...skillData,
+            id: `custom_${skillData.name.replace(/\s/g, '')}_${Date.now()}`
+        };
+
+        updateCharacter(activeCharacter.id, char => {
+            const customSkills = [...(char.customSkills || []), newSkill];
+            const newSkills = { ...char.skills };
+            
+            // 新しい独自技能のスキル値を初期化
+            newSkills[newSkill.name] = newSkill.baseValue;
+            
+            return { customSkills, skills: newSkills };
+        });
+
+        // アロケーションも初期化
+        setAllocations(prev => ({
+            ...prev,
+            [activeCharacter.id]: {
+                ...prev[activeCharacter.id],
+                [newSkill.name]: { occ: 0, int: 0 }
+            }
+        }));
+    };
+
+    // 独自技能の編集
+    const handleEditCustomSkill = (skillData: CustomSkill) => {
+        if (!activeCharacter) return;
+
+        updateCharacter(activeCharacter.id, char => {
+            const customSkills = (char.customSkills || []).map(skill => 
+                skill.id === skillData.id ? skillData : skill
+            );
+            
+            const newSkills = { ...char.skills };
+            // スキル値を再計算
+            const allocation = allocations[activeCharacter.id]?.[skillData.name] || { occ: 0, int: 0 };
+            newSkills[skillData.name] = skillData.baseValue + allocation.occ + allocation.int;
+            
+            return { customSkills, skills: newSkills };
+        });
+    };
+
+    // 独自技能の削除
+    const handleDeleteCustomSkill = (skillId: string) => {
+        if (!activeCharacter) return;
+
+        const skillToDelete = activeCharacter.customSkills?.find(skill => skill.id === skillId);
+        if (!skillToDelete) return;
+
+        updateCharacter(activeCharacter.id, char => {
+            const customSkills = (char.customSkills || []).filter(skill => skill.id !== skillId);
+            const newSkills = { ...char.skills };
+            delete newSkills[skillToDelete.name];
+            
+            // カスタム職業技能からも削除
+            const customOccupationalSkills = (char.customOccupationalSkills || [])
+                .filter(skillName => skillName !== skillToDelete.name);
+            
+            return { 
+                customSkills, 
+                skills: newSkills, 
+                customOccupationalSkills 
+            };
+        });
+
+        // アロケーションからも削除
+        setAllocations(prev => {
+            const newAllocs = { ...prev };
+            if (newAllocs[activeCharacter.id]) {
+                delete newAllocs[activeCharacter.id][skillToDelete.name];
+            }
+            return newAllocs;
+        });
+    };
+
     const handleResetAllPoints = () => {
         if (!activeCharacterId) return;
 
@@ -730,12 +850,13 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
             const newAllocsForChar: CharacterAllocations = {};
             const newSkills = { ...char.skills };
 
-            for (const skillName of ALL_SKILLS) {
+            const allSkillNames = [...ALL_SKILLS, ...(char.customSkills || []).map(cs => cs.name)];
+            for (const skillName of allSkillNames) {
                 // Reset both occupation and interest points
                 newAllocsForChar[skillName] = { occ: 0, int: 0 };
 
                 // Recalculate total skill value to its base
-                const base = getBaseSkillValue(skillName, char.stats);
+                const base = getBaseSkillValue(skillName, char.stats, char.customSkills || []);
                 newSkills[skillName] = base;
             }
 
@@ -762,7 +883,8 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
         updateCharacter(activeCharacter.id, (char) => {
             const newAllocsForChar: CharacterAllocations = {};
             // Initialize all allocations to zero
-            for (const skillName of ALL_SKILLS) {
+            const allSkillNames = [...ALL_SKILLS, ...(char.customSkills || []).map(cs => cs.name)];
+            for (const skillName of allSkillNames) {
                 newAllocsForChar[skillName] = { occ: 0, int: 0 };
             }
 
@@ -772,7 +894,7 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
                 const randomIndex = Math.floor(Math.random() * availableOccSkills.length);
                 const randomSkill = availableOccSkills[randomIndex];
 
-                const base = getBaseSkillValue(randomSkill, char.stats);
+                const base = getBaseSkillValue(randomSkill, char.stats, char.customSkills || []);
                 const currentAlloc = newAllocsForChar[randomSkill];
                 const currentTotal = base + currentAlloc.occ + currentAlloc.int;
 
@@ -785,12 +907,12 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
             }
 
             // Allocate Interest Points
-            let availableIntSkills = [...ALL_SKILLS];
+            let availableIntSkills = [...allSkillNames];
             while (intPointsToDistribute > 0 && availableIntSkills.length > 0) {
                 const randomIndex = Math.floor(Math.random() * availableIntSkills.length);
                 const randomSkill = availableIntSkills[randomIndex];
 
-                const base = getBaseSkillValue(randomSkill, char.stats);
+                const base = getBaseSkillValue(randomSkill, char.stats, char.customSkills || []);
                 const currentAlloc = newAllocsForChar[randomSkill];
                 const currentTotal = base + currentAlloc.occ + currentAlloc.int;
 
@@ -804,8 +926,8 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
 
             // Final calculation of skill totals
             const newSkills = { ...char.skills };
-            for (const skillName of ALL_SKILLS) {
-                const base = getBaseSkillValue(skillName, char.stats);
+            for (const skillName of allSkillNames) {
+                const base = getBaseSkillValue(skillName, char.stats, char.customSkills || []);
                 const alloc = newAllocsForChar[skillName];
                 const newTotal = base + alloc.occ + alloc.int;
                 newSkills[skillName] = newTotal > 99 ? 99 : newTotal; // Cap at 99
@@ -873,6 +995,16 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
                     onClose={handleCloseModal}
                 />
             )}
+            <CustomSkillModal
+                isOpen={customSkillModalOpen}
+                editingSkill={editingCustomSkill}
+                onSave={handleAddCustomSkill}
+                onEdit={handleEditCustomSkill}
+                onClose={() => {
+                    setCustomSkillModalOpen(false);
+                    setEditingCustomSkill(null);
+                }}
+            />
             <input
                 type="file"
                 ref={characterFileInputRef}
@@ -1063,21 +1195,50 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
                                                 <div>職業P</div>
                                                 <div>興味P</div>
                                             </div>
-                                            {Object.entries(SKILL_CATEGORIES).map(([category, skills]) => (
+                                            {Object.entries(SKILL_CATEGORIES).map(([category, skills]) => {
+                                                // 標準技能にそのカテゴリの独自技能を追加
+                                                const customSkillsInCategory = (activeCharacter.customSkills || [])
+                                                    .filter(cs => cs.category === category)
+                                                    .map(cs => cs.name);
+                                                
+                                                const displaySkills = [
+                                                    ...skills.filter(s => ALL_SKILLS.includes(s)),
+                                                    ...customSkillsInCategory
+                                                ];
+                                                
+                                                // 空のカテゴリはスキップ
+                                                if (displaySkills.length === 0) return null;
+
+                                                return (
                                                 <details key={category} open className="mb-2">
-                                                    <summary className="font-bold text-purple-300 cursor-pointer p-2 hover:bg-gray-800/50 rounded">{category}</summary>
+                                                    <summary className="font-bold text-purple-300 cursor-pointer p-2 hover:bg-gray-800/50 rounded flex justify-between items-center">
+                                                        <span>{category}</span>
+                                                        <button 
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setCustomSkillModalOpen(true);
+                                                                setEditingCustomSkill(null);
+                                                            }}
+                                                            className="flex items-center text-xs px-2 py-1 bg-purple-600 hover:bg-purple-500 rounded ml-2"
+                                                            title="独自技能を追加"
+                                                        >
+                                                            <PlusCircle size={12} className="mr-1" />
+                                                            独自技能追加
+                                                        </button>
+                                                    </summary>
                                                     <div className="space-y-1 pl-2">
-                                                        {skills.filter(s => ALL_SKILLS.includes(s)).map(skillName => {
-                                                            const baseValue = getBaseSkillValue(skillName, activeCharacter.stats);
+                                                        {displaySkills.map(skillName => {
+                                                            const baseValue = getBaseSkillValue(skillName, activeCharacter.stats, activeCharacter.customSkills || []);
                                                             const totalValue = activeCharacter.skills[skillName] || baseValue;
                                                             const currentAlloc = allocations[activeCharacter.id]?.[skillName] || { occ: 0, int: 0 };
 
                                                             const isPresetOccSkill = (OCCUPATIONS[activeCharacter.occupation] || []).includes(skillName);
                                                             const isCustomSelectedOccSkill = isCustomOccupation && (activeCharacter.customOccupationalSkills || []).includes(skillName);
                                                             const isOccSkill = !isCustomOccupation ? isPresetOccSkill : isCustomSelectedOccSkill;
+                                                            const isCustomSkill = customSkillsInCategory.includes(skillName);
 
                                                             return (
-                                                                <div key={skillName} className={`grid ${isCustomOccupation ? 'grid-cols-7' : 'grid-cols-6'} items-center text-sm py-1 px-2 rounded hover:bg-gray-800/50`}>
+                                                                <div key={skillName} className={`grid ${isCustomOccupation ? 'grid-cols-7' : 'grid-cols-6'} items-center text-sm py-1 px-2 rounded hover:bg-gray-800/50 group`}>
                                                                     {isCustomOccupation && (
                                                                         <div className="text-center">
                                                                             <input
@@ -1090,7 +1251,38 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
                                                                             />
                                                                         </div>
                                                                     )}
-                                                                    <div className={`col-span-2 font-semibold ${isOccSkill ? 'text-purple-300' : ''}`} title={isOccSkill ? '職業技能' : ''}>{skillName}</div>
+                                                                    <div className={`col-span-2 font-semibold flex items-center justify-between ${isOccSkill ? 'text-purple-300' : ''}`} title={isOccSkill ? '職業技能' : ''}>
+                                                                        <span>{skillName}{isCustomSkill ? ' (独自)' : ''}</span>
+                                                                        {isCustomSkill && (
+                                                                            <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                <button 
+                                                                                    onClick={() => {
+                                                                                        const skill = activeCharacter.customSkills?.find(cs => cs.name === skillName);
+                                                                                        if (skill) {
+                                                                                            setEditingCustomSkill(skill);
+                                                                                            setCustomSkillModalOpen(true);
+                                                                                        }
+                                                                                    }}
+                                                                                    className="p-1 hover:text-purple-300"
+                                                                                    title="編集"
+                                                                                >
+                                                                                    <Pencil size={12} />
+                                                                                </button>
+                                                                                <button 
+                                                                                    onClick={() => {
+                                                                                        const skill = activeCharacter.customSkills?.find(cs => cs.name === skillName);
+                                                                                        if (skill) {
+                                                                                            handleDeleteCustomSkill(skill.id);
+                                                                                        }
+                                                                                    }}
+                                                                                    className="p-1 hover:text-red-400"
+                                                                                    title="削除"
+                                                                                >
+                                                                                    <Trash2 size={12} />
+                                                                                </button>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
                                                                     <div className="text-center font-bold">{totalValue}%</div>
                                                                     <div className="text-center text-gray-400">{baseValue}</div>
                                                                     <div className="text-center">
@@ -1112,7 +1304,8 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
                                                         })}
                                                     </div>
                                                 </details>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     )}
 
@@ -1194,6 +1387,131 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
                         {canStartGame ? "物語を開始する" : "キャラクターを完成させてください"}
                     </button>
                 </footer>
+            </div>
+        </div>
+    );
+};
+
+// 独自技能作成・編集モーダル
+const CustomSkillModal: React.FC<{
+    isOpen: boolean;
+    editingSkill: CustomSkill | null;
+    onSave: (skillData: Omit<CustomSkill, 'id'>) => void;
+    onEdit: (skillData: CustomSkill) => void;
+    onClose: () => void;
+}> = ({ isOpen, editingSkill, onSave, onEdit, onClose }) => {
+    const [formData, setFormData] = useState({
+        name: '',
+        baseValue: 1,
+        category: '知識技能'
+    });
+
+    useEffect(() => {
+        if (editingSkill) {
+            setFormData({
+                name: editingSkill.name,
+                baseValue: editingSkill.baseValue,
+                category: editingSkill.category
+            });
+        } else {
+            setFormData({
+                name: '',
+                baseValue: 1,
+                category: '知識技能'
+            });
+        }
+    }, [editingSkill, isOpen]);
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+        const { name, value, type } = e.target;
+        const processedValue = type === 'number' ? parseInt(value) || 0 : value;
+        setFormData(prev => ({ ...prev, [name]: processedValue }));
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!formData.name.trim()) return;
+
+        if (editingSkill) {
+            onEdit({
+                ...editingSkill,
+                ...formData
+            });
+        } else {
+            onSave(formData);
+        }
+        onClose();
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className="bg-gray-800 rounded-lg shadow-xl border border-purple-500/30 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <form onSubmit={handleSubmit}>
+                    <div className="p-6">
+                        <div className="flex justify-between items-start mb-4">
+                            <h2 className="text-2xl font-bold font-crimson text-purple-300">
+                                {editingSkill ? '独自技能を編集' : '独自技能を追加'}
+                            </h2>
+                            <button type="button" onClick={onClose} className="text-gray-400 hover:text-white">
+                                <X size={24} />
+                            </button>
+                        </div>
+                        <div className="space-y-4">
+                            <div>
+                                <label htmlFor="skillName" className="block text-sm font-medium text-gray-300 mb-1">技能名</label>
+                                <input 
+                                    id="skillName" 
+                                    name="name" 
+                                    type="text" 
+                                    value={formData.name} 
+                                    onChange={handleChange} 
+                                    required 
+                                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-400"
+                                    placeholder="例：考古学（エジプト）"
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="baseValue" className="block text-sm font-medium text-gray-300 mb-1">初期値</label>
+                                <input 
+                                    id="baseValue" 
+                                    name="baseValue" 
+                                    type="number" 
+                                    min="0" 
+                                    max="99"
+                                    value={formData.baseValue} 
+                                    onChange={handleChange} 
+                                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-400"
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="category" className="block text-sm font-medium text-gray-300 mb-1">カテゴリ</label>
+                                <select 
+                                    id="category" 
+                                    name="category" 
+                                    value={formData.category} 
+                                    onChange={handleChange}
+                                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-400"
+                                >
+                                    <option value="戦闘技能">戦闘技能</option>
+                                    <option value="探索技能">探索技能</option>
+                                    <option value="行動技能">行動技能</option>
+                                    <option value="交渉技能">交渉技能</option>
+                                    <option value="知識技能">知識技能</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="bg-gray-900/50 px-6 py-3 flex justify-end gap-4 rounded-b-lg">
+                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white font-semibold rounded-md transition-colors">
+                            キャンセル
+                        </button>
+                        <button type="submit" className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-md transition-colors">
+                            {editingSkill ? '更新' : '追加'}
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     );

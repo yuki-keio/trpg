@@ -20,6 +20,13 @@ export interface Armor {
 }
 
 
+export interface CustomSkill {
+  id: string;
+  name: string;
+  baseValue: number;
+  category: string;
+}
+
 export interface Character {
   id: string;
   name: string;
@@ -41,6 +48,7 @@ export interface Character {
   san: { current: number; max: number };
   skills: { [key: string]: number };
   customOccupationalSkills?: string[];
+  customSkills?: CustomSkill[]; // 独自技能
   weapons: Weapon[];
   armor: Armor[];
   madness?: {
