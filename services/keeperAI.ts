@@ -143,7 +143,7 @@ const modelConfig = {
             type: Type.OBJECT,
             properties: {
               name: { type: Type.STRING, description: "報酬アイテムや情報の魅力的な名前。" },
-              effect: { type: Type.STRING, description: "報酬アイテムや情報の具体的な効果、詳細な説明（武器なら射程・ダメージなど）。ゲームバランスの維持に配慮すること。" }
+              effect: { type: Type.STRING, description: "報酬アイテムや情報の具体的な効果、詳細な説明（武器なら射程・ダメージなど）。TRPGの一般的な報酬の基準を考慮してゲームバランスの維持に配慮すること。" }
             },
             required: ["name", "effect"]
           },
