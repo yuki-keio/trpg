@@ -49,6 +49,43 @@ const cleanSkillName = (skill: string): string => {
     return cleaned;
 };
 
+// 能力値名をクリーンアップして正規化する関数
+const normalizeStat = (statName: string): keyof Character['stats'] | null => {
+    // 前後の空白を除去
+    let cleaned = statName.trim();
+
+    // 様々な記号を除去 
+    cleaned = cleaned.replace(/[〈〉《》【】×*'""`]/g, '');
+    // 数字やその他の文字を除去
+    cleaned = cleaned.replace(/[0-9×+\-\s]/g, '');
+
+    // 大文字に変換
+    cleaned = cleaned.toUpperCase();
+
+    // 能力値の正規化マッピング
+    const statMapping: { [key: string]: keyof Character['stats'] } = {
+        'STR': 'STR',
+        'CON': 'CON',
+        'POW': 'POW',
+        'DEX': 'DEX',
+        'APP': 'APP',
+        'SIZ': 'SIZ',
+        'INT': 'INT',
+        'EDU': 'EDU',
+        // 日本語の略称も対応
+        '筋力': 'STR',
+        '体力': 'CON',
+        '精神力': 'POW',
+        '敏捷性': 'DEX',
+        '外見': 'APP',
+        '体格': 'SIZ',
+        '知性': 'INT',
+        '教育': 'EDU'
+    };
+
+    return statMapping[cleaned] || null;
+};
+
 // 狂気判定と症状決定
 const checkForMadness = (character: Character, sanLoss: number): { type: 'temporary' | 'indefinite' | null; description: string; duration?: number; needsIdeaCheck?: boolean } => {
     // 不定狂気の閾値を計算（SAN最大値の1/5）
@@ -474,14 +511,26 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
         // 能力値判定実行時に一時的狂気のラウンド数を減少
         decrementMadnessDuration();
 
-        const character = characters.find(c => c.id === characterId)!;;
-        const statValue = character.stats[stat] ?? 0;
+        const character = characters.find(c => c.id === characterId)!;
+
+        // 能力値名を正規化して安全に取得
+        const normalizedStat = normalizeStat(stat);
+        if (!normalizedStat) {
+            console.error(`Unknown stat: ${stat}. Available stats:`, Object.keys(character.stats));
+            return;
+        }
+
+        const statValue = character.stats[normalizedStat] ?? 0;
+
+        // デバッグログ
+        console.log(`Stat check: original="${stat}", normalized="${normalizedStat}", value=${statValue}, character stats:`, character.stats);
+
         const baseTargetValue = statValue * multiplier;
 
         // 狂気によるペナルティを適用
         const madnessPenalty = getMadnessPenalty(character, 'stat');
         const targetValue = Math.max(0, baseTargetValue + madnessPenalty);
-        const checkName = `${stat}×${multiplier}`;
+        const checkName = `${normalizedStat}×${multiplier}`;
 
         setDiceRollRequest({
             notation: '1d100',
@@ -1337,9 +1386,19 @@ export const GamePlayScreen: React.FC<GamePlayScreenProps> = ({ initialCharacter
                                     </button>
                                 )}
                                 {pendingAction.statCheck && (
-                                    <button onClick={() => setModalAction({ type: 'stat', ...pendingAction.statCheck! })} className={actionButtonClasses}>
+                                    <button onClick={() => {
+                                        const normalizedStat = normalizeStat(pendingAction.statCheck!.stat);
+                                        if (normalizedStat) {
+                                            setModalAction({
+                                                type: 'stat',
+                                                stat: normalizedStat,
+                                                multiplier: pendingAction.statCheck!.multiplier,
+                                                reason: pendingAction.statCheck!.reason
+                                            });
+                                        }
+                                    }} className={actionButtonClasses}>
                                         <BrainCircuit className="mr-2" size={18} />
-                                        {pendingAction.statCheck.reason} ({pendingAction.statCheck.stat}×{pendingAction.statCheck.multiplier || 5})
+                                        {pendingAction.statCheck.reason} ({normalizeStat(pendingAction.statCheck.stat) || pendingAction.statCheck.stat}×{pendingAction.statCheck.multiplier || 5})
                                     </button>
                                 )}
                                 {pendingAction.sanityCheck && (

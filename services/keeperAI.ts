@@ -99,7 +99,7 @@ const parseResponse = (response: GenerateContentResponse): KeeperResponse => {
     console.error("Failed to parse AI response:", response.text, error);
     // Fallback response
     return {
-      description: "エラーが発生しました。予期せぬ応答がAIから返されました。もう一度行動してみてください。",
+      description: `AIからの応答の解析でエラーが発生しました。\nエラー：${error instanceof Error ? error.message : String(error)}\nAIからの応答：${response.text}`,
       actionRequired: "あなたたちはどうしますか？",
       sanityCheck: null,
       skillCheck: null,

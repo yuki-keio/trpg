@@ -50,13 +50,13 @@ const getBaseSkillValue = (skillName: string, stats: Character['stats'], customS
     if (dynamicCalc) {
         return dynamicCalc(stats);
     }
-    
+
     // 独自技能をチェック
     const customSkill = customSkills.find(skill => skill.name === skillName);
     if (customSkill) {
         return customSkill.baseValue;
     }
-    
+
     return INITIAL_SKILLS[skillName] ?? 0;
 };
 
@@ -116,10 +116,10 @@ const parseIacharaText = (text: string): { character: Character; allocations: Ch
 
     const skillLines = skillsInfo.split('\n');
     const customSkills: CustomSkill[] = [];
-    
+
     // 現在のカテゴリを追跡
     let currentCategory = '知識技能'; // デフォルト
-    
+
     for (const line of skillLines) {
         // カテゴリ見出しをチェック
         const categoryMatch = line.match(/『(.+?)技能』/);
@@ -127,7 +127,7 @@ const parseIacharaText = (text: string): { character: Character; allocations: Ch
             currentCategory = categoryMatch[1] + '技能';
             continue;
         }
-        
+
         // Quick filter for lines that are likely not skill entries (e.g., headers)
         if (!/\d/.test(line)) continue;
 
@@ -164,7 +164,7 @@ const parseIacharaText = (text: string): { character: Character; allocations: Ch
             newAllocations[skillName] = { occ: occP, int: intP };
         }
     }
-    
+
     newChar.customSkills = customSkills;
 
     const isPresetOccupation = Object.keys(OCCUPATIONS).includes(newChar.occupation);
@@ -775,10 +775,10 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
         updateCharacter(activeCharacter.id, char => {
             const customSkills = [...(char.customSkills || []), newSkill];
             const newSkills = { ...char.skills };
-            
+
             // 新しい独自技能のスキル値を初期化
             newSkills[newSkill.name] = newSkill.baseValue;
-            
+
             return { customSkills, skills: newSkills };
         });
 
@@ -797,15 +797,15 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
         if (!activeCharacter) return;
 
         updateCharacter(activeCharacter.id, char => {
-            const customSkills = (char.customSkills || []).map(skill => 
+            const customSkills = (char.customSkills || []).map(skill =>
                 skill.id === skillData.id ? skillData : skill
             );
-            
+
             const newSkills = { ...char.skills };
             // スキル値を再計算
             const allocation = allocations[activeCharacter.id]?.[skillData.name] || { occ: 0, int: 0 };
             newSkills[skillData.name] = skillData.baseValue + allocation.occ + allocation.int;
-            
+
             return { customSkills, skills: newSkills };
         });
     };
@@ -821,15 +821,15 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
             const customSkills = (char.customSkills || []).filter(skill => skill.id !== skillId);
             const newSkills = { ...char.skills };
             delete newSkills[skillToDelete.name];
-            
+
             // カスタム職業技能からも削除
             const customOccupationalSkills = (char.customOccupationalSkills || [])
                 .filter(skillName => skillName !== skillToDelete.name);
-            
-            return { 
-                customSkills, 
-                skills: newSkills, 
-                customOccupationalSkills 
+
+            return {
+                customSkills,
+                skills: newSkills,
+                customOccupationalSkills
             };
         });
 
@@ -1200,110 +1200,110 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
                                                 const customSkillsInCategory = (activeCharacter.customSkills || [])
                                                     .filter(cs => cs.category === category)
                                                     .map(cs => cs.name);
-                                                
+
                                                 const displaySkills = [
                                                     ...skills.filter(s => ALL_SKILLS.includes(s)),
                                                     ...customSkillsInCategory
                                                 ];
-                                                
+
                                                 // 空のカテゴリはスキップ
                                                 if (displaySkills.length === 0) return null;
 
                                                 return (
-                                                <details key={category} open className="mb-2">
-                                                    <summary className="font-bold text-purple-300 cursor-pointer p-2 hover:bg-gray-800/50 rounded flex justify-between items-center">
-                                                        <span>{category}</span>
-                                                        <button 
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setCustomSkillModalOpen(true);
-                                                                setEditingCustomSkill(null);
-                                                            }}
-                                                            className="flex items-center text-xs px-2 py-1 bg-purple-600 hover:bg-purple-500 rounded ml-2"
-                                                            title="独自技能を追加"
-                                                        >
-                                                            <PlusCircle size={12} className="mr-1" />
-                                                            独自技能追加
-                                                        </button>
-                                                    </summary>
-                                                    <div className="space-y-1 pl-2">
-                                                        {displaySkills.map(skillName => {
-                                                            const baseValue = getBaseSkillValue(skillName, activeCharacter.stats, activeCharacter.customSkills || []);
-                                                            const totalValue = activeCharacter.skills[skillName] || baseValue;
-                                                            const currentAlloc = allocations[activeCharacter.id]?.[skillName] || { occ: 0, int: 0 };
+                                                    <details key={category} open className="mb-2">
+                                                        <summary className="font-bold text-purple-300 cursor-pointer p-2 hover:bg-gray-800/50 rounded flex justify-between items-center">
+                                                            <span>{category}</span>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setCustomSkillModalOpen(true);
+                                                                    setEditingCustomSkill(null);
+                                                                }}
+                                                                className="flex items-center text-xs px-2 py-1 bg-purple-600 hover:bg-purple-500 rounded ml-2"
+                                                                title="独自技能を追加"
+                                                            >
+                                                                <PlusCircle size={12} className="mr-1" />
+                                                                独自技能追加
+                                                            </button>
+                                                        </summary>
+                                                        <div className="space-y-1 pl-2">
+                                                            {displaySkills.map(skillName => {
+                                                                const baseValue = getBaseSkillValue(skillName, activeCharacter.stats, activeCharacter.customSkills || []);
+                                                                const totalValue = activeCharacter.skills[skillName] || baseValue;
+                                                                const currentAlloc = allocations[activeCharacter.id]?.[skillName] || { occ: 0, int: 0 };
 
-                                                            const isPresetOccSkill = (OCCUPATIONS[activeCharacter.occupation] || []).includes(skillName);
-                                                            const isCustomSelectedOccSkill = isCustomOccupation && (activeCharacter.customOccupationalSkills || []).includes(skillName);
-                                                            const isOccSkill = !isCustomOccupation ? isPresetOccSkill : isCustomSelectedOccSkill;
-                                                            const isCustomSkill = customSkillsInCategory.includes(skillName);
+                                                                const isPresetOccSkill = (OCCUPATIONS[activeCharacter.occupation] || []).includes(skillName);
+                                                                const isCustomSelectedOccSkill = isCustomOccupation && (activeCharacter.customOccupationalSkills || []).includes(skillName);
+                                                                const isOccSkill = !isCustomOccupation ? isPresetOccSkill : isCustomSelectedOccSkill;
+                                                                const isCustomSkill = customSkillsInCategory.includes(skillName);
 
-                                                            return (
-                                                                <div key={skillName} className={`grid ${isCustomOccupation ? 'grid-cols-7' : 'grid-cols-6'} items-center text-sm py-1 px-2 rounded hover:bg-gray-800/50 group`}>
-                                                                    {isCustomOccupation && (
-                                                                        <div className="text-center">
-                                                                            <input
-                                                                                type="checkbox"
-                                                                                checked={isCustomSelectedOccSkill}
-                                                                                onChange={() => handleCustomOccSkillToggle(activeCharacter.id, skillName)}
-                                                                                disabled={!isCustomSelectedOccSkill && derivedData.selectedOccSkillsCount >= 8}
-                                                                                className="form-checkbox h-4 w-4 bg-gray-700 border-gray-600 rounded text-purple-500 focus:ring-purple-400 disabled:bg-gray-800 disabled:cursor-not-allowed"
-                                                                                title={!isCustomSelectedOccSkill && derivedData.selectedOccSkillsCount >= 8 ? "職業技能は8つまで選択できます" : "職業技能として設定"}
-                                                                            />
-                                                                        </div>
-                                                                    )}
-                                                                    <div className={`col-span-2 font-semibold flex items-center justify-between ${isOccSkill ? 'text-purple-300' : ''}`} title={isOccSkill ? '職業技能' : ''}>
-                                                                        <span>{skillName}{isCustomSkill ? ' (独自)' : ''}</span>
-                                                                        {isCustomSkill && (
-                                                                            <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                                <button 
-                                                                                    onClick={() => {
-                                                                                        const skill = activeCharacter.customSkills?.find(cs => cs.name === skillName);
-                                                                                        if (skill) {
-                                                                                            setEditingCustomSkill(skill);
-                                                                                            setCustomSkillModalOpen(true);
-                                                                                        }
-                                                                                    }}
-                                                                                    className="p-1 hover:text-purple-300"
-                                                                                    title="編集"
-                                                                                >
-                                                                                    <Pencil size={12} />
-                                                                                </button>
-                                                                                <button 
-                                                                                    onClick={() => {
-                                                                                        const skill = activeCharacter.customSkills?.find(cs => cs.name === skillName);
-                                                                                        if (skill) {
-                                                                                            handleDeleteCustomSkill(skill.id);
-                                                                                        }
-                                                                                    }}
-                                                                                    className="p-1 hover:text-red-400"
-                                                                                    title="削除"
-                                                                                >
-                                                                                    <Trash2 size={12} />
-                                                                                </button>
+                                                                return (
+                                                                    <div key={skillName} className={`grid ${isCustomOccupation ? 'grid-cols-7' : 'grid-cols-6'} items-center text-sm py-1 px-2 rounded hover:bg-gray-800/50 group`}>
+                                                                        {isCustomOccupation && (
+                                                                            <div className="text-center">
+                                                                                <input
+                                                                                    type="checkbox"
+                                                                                    checked={isCustomSelectedOccSkill}
+                                                                                    onChange={() => handleCustomOccSkillToggle(activeCharacter.id, skillName)}
+                                                                                    disabled={!isCustomSelectedOccSkill && derivedData.selectedOccSkillsCount >= 8}
+                                                                                    className="form-checkbox h-4 w-4 bg-gray-700 border-gray-600 rounded text-purple-500 focus:ring-purple-400 disabled:bg-gray-800 disabled:cursor-not-allowed"
+                                                                                    title={!isCustomSelectedOccSkill && derivedData.selectedOccSkillsCount >= 8 ? "職業技能は8つまで選択できます" : "職業技能として設定"}
+                                                                                />
                                                                             </div>
                                                                         )}
+                                                                        <div className={`col-span-2 font-semibold flex items-center justify-between ${isOccSkill ? 'text-purple-300' : ''}`} title={isOccSkill ? '職業技能' : ''}>
+                                                                            <span>{skillName}{isCustomSkill ? ' (独自)' : ''}</span>
+                                                                            {isCustomSkill && (
+                                                                                <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            const skill = activeCharacter.customSkills?.find(cs => cs.name === skillName);
+                                                                                            if (skill) {
+                                                                                                setEditingCustomSkill(skill);
+                                                                                                setCustomSkillModalOpen(true);
+                                                                                            }
+                                                                                        }}
+                                                                                        className="p-1 hover:text-purple-300"
+                                                                                        title="編集"
+                                                                                    >
+                                                                                        <Pencil size={12} />
+                                                                                    </button>
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            const skill = activeCharacter.customSkills?.find(cs => cs.name === skillName);
+                                                                                            if (skill) {
+                                                                                                handleDeleteCustomSkill(skill.id);
+                                                                                            }
+                                                                                        }}
+                                                                                        className="p-1 hover:text-red-400"
+                                                                                        title="削除"
+                                                                                    >
+                                                                                        <Trash2 size={12} />
+                                                                                    </button>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="text-center font-bold">{totalValue}%</div>
+                                                                        <div className="text-center text-gray-400">{baseValue}</div>
+                                                                        <div className="text-center">
+                                                                            <input
+                                                                                type="number"
+                                                                                min="0"
+                                                                                value={currentAlloc.occ}
+                                                                                onChange={e => handleSkillAllocation(activeCharacter.id, skillName, 'occ', parseInt(e.target.value) || 0)}
+                                                                                className="w-12 p-1 text-center bg-gray-700 border border-gray-600 rounded-md disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed"
+                                                                                disabled={!isOccSkill}
+                                                                                title={!isOccSkill ? 'この技能は職業技能ではありません' : '職業ポイントを割り振ります'}
+                                                                            />
+                                                                        </div>
+                                                                        <div className="text-center">
+                                                                            <input type="number" min="0" value={currentAlloc.int} onChange={e => handleSkillAllocation(activeCharacter.id, skillName, 'int', parseInt(e.target.value) || 0)} className="w-12 p-1 text-center bg-gray-700 border border-gray-600 rounded-md" />
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="text-center font-bold">{totalValue}%</div>
-                                                                    <div className="text-center text-gray-400">{baseValue}</div>
-                                                                    <div className="text-center">
-                                                                        <input
-                                                                            type="number"
-                                                                            min="0"
-                                                                            value={currentAlloc.occ}
-                                                                            onChange={e => handleSkillAllocation(activeCharacter.id, skillName, 'occ', parseInt(e.target.value) || 0)}
-                                                                            className="w-12 p-1 text-center bg-gray-700 border border-gray-600 rounded-md disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed"
-                                                                            disabled={!isOccSkill}
-                                                                            title={!isOccSkill ? 'この技能は職業技能ではありません' : '職業ポイントを割り振ります'}
-                                                                        />
-                                                                    </div>
-                                                                    <div className="text-center">
-                                                                        <input type="number" min="0" value={currentAlloc.int} onChange={e => handleSkillAllocation(activeCharacter.id, skillName, 'int', parseInt(e.target.value) || 0)} className="w-12 p-1 text-center bg-gray-700 border border-gray-600 rounded-md" />
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </details>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </details>
                                                 );
                                             })}
                                         </div>
@@ -1461,36 +1461,36 @@ const CustomSkillModal: React.FC<{
                         <div className="space-y-4">
                             <div>
                                 <label htmlFor="skillName" className="block text-sm font-medium text-gray-300 mb-1">技能名</label>
-                                <input 
-                                    id="skillName" 
-                                    name="name" 
-                                    type="text" 
-                                    value={formData.name} 
-                                    onChange={handleChange} 
-                                    required 
+                                <input
+                                    id="skillName"
+                                    name="name"
+                                    type="text"
+                                    value={formData.name}
+                                    onChange={handleChange}
+                                    required
                                     className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-400"
                                     placeholder="例：考古学（エジプト）"
                                 />
                             </div>
                             <div>
                                 <label htmlFor="baseValue" className="block text-sm font-medium text-gray-300 mb-1">初期値</label>
-                                <input 
-                                    id="baseValue" 
-                                    name="baseValue" 
-                                    type="number" 
-                                    min="0" 
+                                <input
+                                    id="baseValue"
+                                    name="baseValue"
+                                    type="number"
+                                    min="0"
                                     max="99"
-                                    value={formData.baseValue} 
-                                    onChange={handleChange} 
+                                    value={formData.baseValue}
+                                    onChange={handleChange}
                                     className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-400"
                                 />
                             </div>
                             <div>
                                 <label htmlFor="category" className="block text-sm font-medium text-gray-300 mb-1">カテゴリ</label>
-                                <select 
-                                    id="category" 
-                                    name="category" 
-                                    value={formData.category} 
+                                <select
+                                    id="category"
+                                    name="category"
+                                    value={formData.category}
                                     onChange={handleChange}
                                     className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-400"
                                 >
