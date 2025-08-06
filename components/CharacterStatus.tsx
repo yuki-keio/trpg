@@ -49,14 +49,26 @@ const CharacterDetails: React.FC<{ character: Character }> = ({ character }) => 
             </div>
 
             <div className="bg-gray-800/50 rounded-lg p-4 mb-4">
-                <StatBar label="HP" value={character.hp.current} max={character.hp.max} icon={<HeartPulse size={16} />} color="bg-red-600" />
+                <StatBar
+                    label="HP"
+                    value={character.hp.current}
+                    max={character.hp.max + (character.hp.growth || 0)}
+                    icon={<HeartPulse size={16} />}
+                    color="bg-red-600"
+                />
                 {character.hp.growth && character.hp.growth > 0 && (
                     <div className="text-xs text-green-400 font-bold ml-6 -mt-2 mb-2">
                         成長分: +{character.hp.growth}
                     </div>
                 )}
 
-                <StatBar label="MP" value={character.mp.current} max={character.mp.max} icon={<BookOpen size={16} />} color="bg-green-500" />
+                <StatBar
+                    label="MP"
+                    value={character.mp.current}
+                    max={character.mp.max + (character.mp.growth || 0)}
+                    icon={<BookOpen size={16} />}
+                    color="bg-green-500"
+                />
                 {character.mp.growth && character.mp.growth > 0 && (
                     <div className="text-xs text-green-400 font-bold ml-6 -mt-2 mb-2">
                         成長分: +{character.mp.growth}

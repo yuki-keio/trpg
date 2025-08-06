@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+
 import type { Character, Weapon, Armor, CustomSkill } from '../types';
 import { INITIAL_SKILLS, OCCUPATIONS, SKILL_CATEGORIES, DYNAMIC_BASE_SKILLS, ALL_SKILLS } from '../constants';
 import { UserPlus, Trash2, Users, UploadCloud, X, User, Sword, Shield, Pencil, PlusCircle, BrainCircuit, Dices, Info, ChevronsUpDown, RotateCcw, Sparkles } from 'lucide-react';
@@ -124,10 +125,9 @@ const parseIacharaText = (text: string): { character: Character; allocations: Ch
         const currentHp = parseInt(hpMatch[1], 10);
         const maxHp = parseInt(hpMatch[2], 10);
         const hpGrowth = parseInt(hpMatch[3], 10) || 0;
-        // 成長分を含めた値をhp.currentとhp.maxに設定
         newChar.hp = {
-            current: currentHp + hpGrowth,
-            max: maxHp + hpGrowth,
+            current: currentHp,
+            max: maxHp,
             growth: hpGrowth > 0 ? hpGrowth : undefined
         };
     } else {
@@ -142,10 +142,9 @@ const parseIacharaText = (text: string): { character: Character; allocations: Ch
         const currentMp = parseInt(mpMatch[1], 10);
         const maxMp = parseInt(mpMatch[2], 10);
         const mpGrowth = parseInt(mpMatch[3], 10) || 0;
-        // 成長分を含めた値をmp.currentとmp.maxに設定
         newChar.mp = {
-            current: currentMp + mpGrowth,
-            max: maxMp + mpGrowth,
+            current: currentMp,
+            max: maxMp,
             growth: mpGrowth > 0 ? mpGrowth : undefined
         };
     } else {
@@ -160,7 +159,6 @@ const parseIacharaText = (text: string): { character: Character; allocations: Ch
         const currentSan = parseInt(sanMatch[1], 10);
         const maxSan = parseInt(sanMatch[2], 10);
         const sanGrowth = parseInt(sanMatch[3], 10) || 0;
-        // 成長分を含めた値をsan.currentとsan.maxに設定
         newChar.san = {
             current: currentSan + sanGrowth,
             max: maxSan + sanGrowth,
