@@ -124,7 +124,12 @@ const parseIacharaText = (text: string): { character: Character; allocations: Ch
         const currentHp = parseInt(hpMatch[1], 10);
         const maxHp = parseInt(hpMatch[2], 10);
         const hpGrowth = parseInt(hpMatch[3], 10) || 0;
-        newChar.hp = { current: currentHp, max: maxHp, growth: hpGrowth > 0 ? hpGrowth : undefined };
+        // 成長分を含めた値をhp.currentとhp.maxに設定
+        newChar.hp = {
+            current: currentHp + hpGrowth,
+            max: maxHp + hpGrowth,
+            growth: hpGrowth > 0 ? hpGrowth : undefined
+        };
     } else {
         const hp = Math.ceil(((rawStats.CON ?? 0) + (rawStats.SIZ ?? 0)) / 2);
         newChar.hp = { max: hp, current: hp };
@@ -137,7 +142,12 @@ const parseIacharaText = (text: string): { character: Character; allocations: Ch
         const currentMp = parseInt(mpMatch[1], 10);
         const maxMp = parseInt(mpMatch[2], 10);
         const mpGrowth = parseInt(mpMatch[3], 10) || 0;
-        newChar.mp = { current: currentMp, max: maxMp, growth: mpGrowth > 0 ? mpGrowth : undefined };
+        // 成長分を含めた値をmp.currentとmp.maxに設定
+        newChar.mp = {
+            current: currentMp + mpGrowth,
+            max: maxMp + mpGrowth,
+            growth: mpGrowth > 0 ? mpGrowth : undefined
+        };
     } else {
         const pow = rawStats.POW ?? 0;
         newChar.mp = { max: pow, current: pow };
@@ -150,7 +160,12 @@ const parseIacharaText = (text: string): { character: Character; allocations: Ch
         const currentSan = parseInt(sanMatch[1], 10);
         const maxSan = parseInt(sanMatch[2], 10);
         const sanGrowth = parseInt(sanMatch[3], 10) || 0;
-        newChar.san = { current: currentSan, max: maxSan, growth: sanGrowth > 0 ? sanGrowth : undefined };
+        // 成長分を含めた値をsan.currentとsan.maxに設定
+        newChar.san = {
+            current: currentSan + sanGrowth,
+            max: maxSan + sanGrowth,
+            growth: sanGrowth > 0 ? sanGrowth : undefined
+        };
     } else {
         const pow = rawStats.POW ?? 0;
         const sanMax = pow * 5;
@@ -727,9 +742,21 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
 
             return {
                 stats: newStats,
-                hp: { max: newHP, current: newHP },
-                mp: { max: newMP, current: newMP },
-                san: { max: newSAN, current: char.san.current > newSAN ? newSAN : char.san.current },
+                hp: {
+                    max: newHP + (char.hp.growth || 0),
+                    current: Math.min(char.hp.current, newHP + (char.hp.growth || 0)),
+                    growth: char.hp.growth
+                },
+                mp: {
+                    max: newMP + (char.mp.growth || 0),
+                    current: Math.min(char.mp.current, newMP + (char.mp.growth || 0)),
+                    growth: char.mp.growth
+                },
+                san: {
+                    max: newSAN + (char.san.growth || 0),
+                    current: char.san.current > (newSAN + (char.san.growth || 0)) ? (newSAN + (char.san.growth || 0)) : char.san.current,
+                    growth: char.san.growth
+                },
                 skills: newSkills
             };
         });
@@ -768,9 +795,21 @@ export const CharacterCreationScreen: React.FC<{ onCharacterCreate: (characters:
 
             return {
                 stats: newStats,
-                hp: { max: newHP, current: newHP },
-                mp: { max: newMP, current: newMP },
-                san: { max: newSAN, current: char.san.current > newSAN ? newSAN : char.san.current },
+                hp: {
+                    max: newHP + (char.hp.growth || 0),
+                    current: newHP + (char.hp.growth || 0),
+                    growth: char.hp.growth
+                },
+                mp: {
+                    max: newMP + (char.mp.growth || 0),
+                    current: newMP + (char.mp.growth || 0),
+                    growth: char.mp.growth
+                },
+                san: {
+                    max: newSAN + (char.san.growth || 0),
+                    current: char.san.current > (newSAN + (char.san.growth || 0)) ? (newSAN + (char.san.growth || 0)) : char.san.current,
+                    growth: char.san.growth
+                },
                 skills: newSkills,
             };
         });
