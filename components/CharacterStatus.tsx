@@ -21,14 +21,14 @@ const StatBar: React.FC<{ value: number; max: number; label: string; icon: React
     );
 };
 
-const SkillItem: React.FC<{ name: string; value: number; growth?: number }> = ({ name, value, growth }) => (
+const SkillItem: React.FC<{ name: string; value: number; displaySkillGrowth?: number }> = ({ name, value, displaySkillGrowth }) => (
     <div className="flex justify-between items-center text-sm py-1 border-b border-gray-700/50">
         <span>〈{name}〉</span>
         <span className="font-bold font-crimson">
             {value}
-            {growth && growth > 0 && (
-                <span className="text-green-400 text-xs ml-1">(+{growth})</span>
-            )}
+            {displaySkillGrowth ? (
+                <span className="text-green-400 ml-1">+ {displaySkillGrowth}</span>
+            ) : null}
         </span>
     </div>
 );
@@ -113,11 +113,8 @@ const CharacterDetails: React.FC<{ character: Character }> = ({ character }) => 
                         return (
                             <div key={key} className="flex justify-between">
                                 <span className="font-bold">{key}</span>
-                                <span className="font-crimson">
-                                    {value}
-                                    {growthValue && growthValue > 0 && (
-                                        <span className="text-green-400 text-xs ml-1">(+{growthValue})</span>
-                                    )}
+                                <span className={`font-crimson ${growthValue ? 'text-green-400' : ''}`}>
+                                    {value + (growthValue || 0)}
                                 </span>
                             </div>
                         );
@@ -167,7 +164,7 @@ const CharacterDetails: React.FC<{ character: Character }> = ({ character }) => 
                         .map(([skill, value]) => {
                             const growth = character.skillGrowth?.[skill] || 0;
                             return (
-                                <SkillItem key={skill} name={skill} value={value} growth={growth} />
+                                <SkillItem key={skill} name={skill} value={value} displaySkillGrowth={growth} />
                             );
                         })}
                 </div>
