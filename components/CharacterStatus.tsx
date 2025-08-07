@@ -171,7 +171,6 @@ const CharacterDetails: React.FC<{ character: Character }> = ({ character }) => 
                 <h3 className="text-lg font-bold mb-2 font-crimson text-purple-300">技能</h3>
                 <div className="max-h-60 overflow-y-auto pr-2">
                     {Object.entries(character.skills)
-                        .filter(([, value]) => value > 0)
                         .sort(([a], [b]) => a.localeCompare(b, 'ja'))
                         .map(([skill, value]) => {
                             const growth = character.skillGrowth?.[skill] || 0;
